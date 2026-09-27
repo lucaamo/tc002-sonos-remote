@@ -1,0 +1,239 @@
+# @name Sonos Remote
+# @desc TC002 physical remote for one Home Assistant media player
+# @version 2.1
+# @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the bridge Sonos Remote topic"
+# @config player text "Sonos player entity" default="" maxlen=128 help="Home Assistant entity, for example media_player.living_room"
+# @config step number "Volume step (%)" default=5 min=1 max=25
+# @config long_ms number "Long press (ms)" default=1200 min=600 max=3000
+# @config media_id text "Playlist, favourite or URI" default="" maxlen=512
+# @config media_type text "Media content type" default="playlist" maxlen=64
+# @config accent color "Music icon colour" default=#35DCC4
+
+import json
+import string
+
+class SonosRemote
+  var root, player, step, long_ms, media_id, media_type, accent
+  var title, artist, playing, volume, label, artist_done, header_scroll
+  var active, session_started, pressed_at, long_handled, osd_until, pending_until, last_state
+
+  def init()
+    self.root = store.get("root")
+    self.player = store.get("player")
+    self.step = store.get("step")
+    self.long_ms = store.get("long_ms")
+    self.media_id = store.get("media_id")
+    self.media_type = store.get("media_type")
+    self.accent = store.get("accent")
+    if self.accent == nil self.accent = settings.get("textColor") end
+    if self.accent == nil self.accent = 0x35DCC4 end
+    self.title = "Premi per avviare"
+    self.artist = "SONOS"
+    self.artist_done = true
+    self.header_scroll = {"repeat":1, "holdMs":700, "whenFits":"static"}
+    self.playing = false
+    self.volume = -1
+    self.label = "--%"
+    self.active = false
+    self.session_started = false
+    self.pressed_at = 0
+    self.long_handled = false
+    self.osd_until = 0
+    self.pending_until = 0
+    self.last_state = 0
+  end
+
+  def setup()
+    mqtt.subscribe(self.root + "/state/#", / topic, payload -> self.on_state(topic, payload))
+    self.send("refresh")
+  end
+
+  def send(action)
+    mqtt.publish(self.root + "/command", json.dump({"action":action, "player_entity_id":self.player}))
+  end
+
+  def send_value(action, value)
+    mqtt.publish(self.root + "/command", json.dump({"action":action, "player_entity_id":self.player, "value":value}))
+  end
+
+  def send_media()
+    mqtt.publish(self.root + "/command", json.dump({"action":"play_media", "player_entity_id":self.player, "media_content_id":self.media_id, "media_content_type":self.media_type}))
+  end
+
+  def on_state(topic, payload)
+    self.last_state = now_ms()
+    if topic == self.root + "/state/title"
+      self.title = payload == "" ? "Premi per avviare" : payload
+    elif topic == self.root + "/state/artist"
+      self.artist = payload == "" ? "SONOS" : string.toupper(payload)
+      self.artist_done = text_ink_width(self.artist) <= width()
+    elif topic == self.root + "/state/playing"
+      self.playing = payload == "playing"
+    elif topic == self.root + "/state/volume"
+      var observed = num(payload)
+      if observed != nil
+        if observed == self.volume self.pending_until = 0 end
+        if now_ms() >= self.pending_until self.volume = int(observed) end
+      end
+    elif topic == self.root + "/state/player_name"
+      if self.artist == "SONOS" && payload != ""
+        self.artist = string.toupper(payload)
+        self.artist_done = text_ink_width(self.artist) <= width()
+      end
+    elif topic == self.root + "/state/error" && payload != ""
+      self.title = payload
+    end
+  end
+
+  def loop()
+    if self.active && (self.last_state == 0 || now_ms() - self.last_state > 2500)
+      self.send("refresh")
+      self.last_state = now_ms()
+    end
+    if self.last_state != 0 && now_ms() - self.last_state > 65000
+      self.title = "Home Assistant offline"
+      self.last_state = 0
+    end
+  end
+
+  def should_show()
+    # The TC002 firmware opens this app through its global knob shortcut.
+    # Returning false keeps the inactive entry out of the normal carousel.
+    return self.active
+  end
+
+  def on_show()
+    self.active = true
+    self.session_started = false
+    self.pressed_at = 0
+    self.long_handled = false
+    rotation.pause()
+    log("Sonos Remote: control on")
+    self.send("refresh")
+  end
+
+  def on_hide()
+    self.pressed_at = 0
+    self.long_handled = false
+    if self.active log("Sonos Remote: control off") end
+    rotation.resume()
+    self.active = false
+    self.osd_until = 0
+  end
+
+  def exit_mode()
+    log("Sonos Remote: control off")
+    self.active = false
+    self.session_started = false
+    rotation.resume()
+    rotation.next()
+  end
+
+  def on_button_event(btn, event)
+    if btn == "select"
+      if event == "press"
+        self.pressed_at = now_ms()
+        self.long_handled = false
+      elif (event == "long" || event == "repeat") && self.pressed_at != 0
+        if !self.long_handled && now_ms() - self.pressed_at >= self.long_ms
+          self.long_handled = true
+          self.exit_mode()
+        end
+      elif event == "release" && self.pressed_at != 0
+        var held = now_ms() - self.pressed_at
+        self.pressed_at = 0
+        if self.long_handled
+          self.long_handled = false
+        elif held >= self.long_ms
+          self.exit_mode()
+        elif self.active
+          if !self.session_started && self.media_id != ""
+            self.send_media()
+          else
+            self.send("play_pause")
+          end
+          self.session_started = true
+        end
+      end
+      return true
+    end
+    if !self.active return false end
+    if event == "press"
+      if btn == "right" self.send("next")
+      elif btn == "left" self.send("previous") end
+      self.session_started = true
+    end
+    return true
+  end
+
+  def on_button(btn)
+    if !self.active return false end
+    if btn != "rocker_left" && btn != "rocker_right" return false end
+    if self.volume < 0
+      self.osd_until = now_ms() + 2000
+      self.send_value("delta", btn == "rocker_right" ? self.step : -self.step)
+      return true
+    end
+    var target = self.volume + (btn == "rocker_right" ? self.step : -self.step)
+    if target < 0 target = 0 end
+    if target > 100 target = 100 end
+    self.volume = target
+    self.label = str(target) + "%"
+    self.pending_until = now_ms() + 3000
+    self.osd_until = now_ms() + 2000
+    self.send_value("volume", target)
+    return true
+  end
+
+  def draw()
+    clear()
+    if height() < 16
+      scroll_text(1, 6, width() - 2, self.title, 0xFFFFFF)
+      return
+    end
+    if self.active && now_ms() < self.osd_until
+      rect_fill(1, 6, 3, 5, 0x38BDF8)
+      line(4, 6, 7, 3, 0x2563EB)
+      line(7, 3, 7, 12, 0x2563EB)
+      line(7, 12, 4, 10, 0x2563EB)
+      var phase = (now_ms() / 140) % 3
+      line(9, 6-phase, 9, 9+phase, 0x35E6B4)
+      line(11, 4+phase, 11, 11-phase, 0xF7C948)
+      line(13, 6-phase, 13, 9+phase, 0xFF45A4)
+      var osd_x = 17
+      var osd_w = width() - osd_x
+      text(osd_x + (osd_w - text_ink_width("SONOS")) / 2, 5, "SONOS", 0xFFFFFF)
+      text(osd_x + (osd_w - text_ink_width(self.label)) / 2, 14, self.label, 0xFFFFFF)
+      return
+    end
+    # Optional local 10x10 Music Meter; shapes are the portable fallback.
+    if !icon("sonos_music_meter", 0, 6)
+      var beat = (now_ms() / 160) % 3
+      rect_fill(1, 12-beat, 2, 3+beat, self.accent)
+      rect_fill(4, 9+beat, 2, 6-beat, 0x38BDF8)
+      rect_fill(7, 7-beat, 2, 8+beat, 0xFF45A4)
+    end
+    if !self.artist_done
+      if scroll_text(0, 5, width(), self.artist, 0xFFFFFF, self.header_scroll) > 0
+        self.artist_done = true
+      end
+    else
+      var artist_w = text_ink_width(self.artist)
+      if artist_w <= width()
+        text((width() - artist_w) / 2, 5, self.artist, 0xFFFFFF)
+      else
+        text(0, 5, self.artist, 0xFFFFFF)
+      end
+    end
+    var title_x = 11
+    var title_w = width() - title_x
+    var title_ink = text_ink_width(self.title)
+    if title_ink <= title_w
+      text(title_x + (title_w - title_ink) / 2, 14, self.title, 0xFFFFFF)
+    else
+      scroll_text(title_x, 14, title_w, self.title, 0xFFFFFF)
+    end
+  end
+end
+
+return SonosRemote()

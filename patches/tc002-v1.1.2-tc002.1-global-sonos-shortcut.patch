@@ -1,0 +1,238 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 8d6746e..44a277d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -56,7 +56,7 @@ target_include_directories(tc002-update PRIVATE src/tc002 ${TC002_GENERATED})
+ target_include_directories(awtrix-tc002 PRIVATE src/tc002 src/tc002/compat src/updater src/loader ${TC002_GENERATED}
+   ${U}/src ${U}/src/sim/compat vendor/base64/src vendor/PubSubClient/src)
+ target_compile_definitions(awtrix-tc002 PRIVATE AWTRIX_NATIVE AWTRIX_SIM AWTRIX_TC002 ${TC002_PANEL}
+-  AWTRIX_NG_VERSION="1.1.2-tc002.1" CPPHTTPLIB_THREAD_POOL_COUNT=2 CPPHTTPLIB_OPENSSL_SUPPORT)
++  AWTRIX_NG_VERSION="1.1.2-tc002.1-sonos.2" CPPHTTPLIB_THREAD_POOL_COUNT=2 CPPHTTPLIB_OPENSSL_SUPPORT)
+ target_compile_options(awtrix-tc002 PRIVATE -Wall -Wextra -Wno-unused-parameter
+   -ffunction-sections -fdata-sections)
+ target_link_options(awtrix-tc002 PRIVATE -Wl,--gc-sections)
+diff --git a/src/tc002/Tc002Periphery.cpp b/src/tc002/Tc002Periphery.cpp
+index f98064d..b53e7e6 100644
+--- a/src/tc002/Tc002Periphery.cpp
++++ b/src/tc002/Tc002Periphery.cpp
+@@ -89,6 +89,11 @@ void Tc002Periphery::tick(int64_t nowMs) {
+     if (held[i] && !wasHeld[i]) {
+       controlPressedMs_[i] = nowMs;
+       controlLong_[i] = false;
++      rockerCaptured_[i] = rockerHook_ && rockerHook_(direction);
++    }
++    if (rockerCaptured_[i]) {
++      if (!held[i]) rockerCaptured_[i] = false;
++      continue;
+     }
+     if (held[i] && nowMs - controlPressedMs_[i] >= 700 &&
+         (!controlLong_[i] || nowMs - controlRepeatMs_[i] >= 200)) {
+diff --git a/src/tc002/Tc002Periphery.h b/src/tc002/Tc002Periphery.h
+index a807f57..009d534 100644
+--- a/src/tc002/Tc002Periphery.h
++++ b/src/tc002/Tc002Periphery.h
+@@ -20,6 +20,9 @@ class Tc002Periphery {
+  public:
+   void begin(CoreEngine& engine, Tc002Board& board, const DeviceConfig& cfg);
+   void setButtonHook(std::function<bool(int, bool)> hook) { buttonHook_ = std::move(hook); }
++  // Give the visible script first refusal on the physical -/+ rocker. Rotary
++  // detents still use setButtonHook and retain their navigation semantics.
++  void setRockerHook(std::function<bool(int)> hook) { rockerHook_ = std::move(hook); }
+   void tick(int64_t nowMs);
+   void renderControlFeedback(Canvas& canvas, int64_t nowMs) const;
+
+@@ -31,6 +34,7 @@ class Tc002Periphery {
+   Tc002Board* board_ = nullptr;
+   const DeviceConfig* cfg_ = nullptr;
+   std::function<bool(int, bool)> buttonHook_;
++  std::function<bool(int)> rockerHook_;
+   ButtonState prev_{};
+   ButtonState raw_{};
+   ButtonState stable_{};
+@@ -38,6 +42,7 @@ class Tc002Periphery {
+   int64_t controlPressedMs_[2] = {0, 0};
+   int64_t controlRepeatMs_[2] = {0, 0};
+   bool controlLong_[2] = {false, false};
++  bool rockerCaptured_[2] = {false, false};
+   int64_t rawChangeMs_[3] = {0, 0, 0};
+   int64_t lastSelectEdgeMs_ = -100000;
+   static constexpr long kDebounceMs = 35;
+diff --git a/src/tc002/main_tc002.cpp b/src/tc002/main_tc002.cpp
+index a34b171..5251eaf 100644
+--- a/src/tc002/main_tc002.cpp
++++ b/src/tc002/main_tc002.cpp
+@@ -25,12 +25,14 @@
+ #include <memory>
+ #include <random>
+ #include <string>
++#include <string_view>
+
+ #include "AppConfig.h"
+ #include "core/CoreEngine.h"
+ #include "core/FrameClock.h"
+ #include "core/StrCase.h"
+ #include "Tc002Capabilities.h"
++#include "core/api/JsonReader.h"
+ #include "core/api/StateJson.h"
+ #include "core/apps/AppRegistry.h"
+ #include "core/apps/SpecRenderer.h"
+@@ -175,6 +177,25 @@ sim::SimScriptStore g_scriptStore;
+ script::ScriptServices g_scriptSvc;
+ script::ScriptHost* g_scripts = nullptr;
+
++constexpr const char* kSonosRemoteApp = "sonos_remote";
++
++long sonosRemoteHoldMs() {
++  constexpr long kDefaultMs = 1200;
++  std::string json;
++  if (!g_scriptStore.readStore(kSonosRemoteApp, json)) return kDefaultMs;
++  api::JsonReader reader{std::string_view(json)};
++  if (!reader.enterObject()) return kDefaultMs;
++  while (reader.nextMember()) {
++    if (reader.keyEquals("long_ms")) {
++      long long value = 0;
++      if (reader.isInteger() && reader.asLong(value) && value >= 600 && value <= 3000)
++        return static_cast<long>(value);
++    }
++    if (!reader.skipValue()) break;
++  }
++  return kDefaultMs;
++}
++
+ // Without this the host would spin as fast as it can and peg a core, and animations would run at a
+ // speed nobody will ever see on the device.
+ void paceFrame() {
+@@ -403,8 +424,44 @@ int main(int argc, char** argv) {
+   display.configure([](const std::string& s, const std::string& p) { g_mqtt.publish(s, p, false); },
+                     g_canvas);
+   g_periphery.setButtonHook([](int btn, bool pressed) {
++    static bool selectDown = false;
++    static bool globalEligible = false;
++    static bool globalHandled = false;
++    static int64_t selectPressedAt = 0;
++    static long holdMs = 1200;
++
++    if (btn == 1) {
++      const int64_t now = monotonicMs();
++      if (pressed && !selectDown) {
++        selectDown = true;
++        globalEligible = g_engine->currentAppId() != kSonosRemoteApp;
++        globalHandled = false;
++        selectPressedAt = now;
++        holdMs = sonosRemoteHoldMs();
++      }
++      if (pressed && globalEligible && !globalHandled && now - selectPressedAt >= holdMs &&
++          g_engine->switchApp(std::string("{\"name\":\"") + kSonosRemoteApp +
++                              "\",\"fast\":true}")) {
++        globalHandled = true;
++        return true;
++      }
++      if (!pressed) {
++        const bool handled =
++            g_scripts && g_scripts->handleButtonState(g_engine->currentAppId(), btn, false);
++        const bool consumed = globalHandled;
++        selectDown = false;
++        globalEligible = false;
++        globalHandled = false;
++        return consumed || handled;
++      }
++      if (globalHandled) return true;
++    }
+     return g_scripts && g_scripts->handleButtonState(g_engine->currentAppId(), btn, pressed);
+   });
++  g_periphery.setRockerHook([](int direction) {
++    return g_scripts && g_scripts->handleButton(
++        g_engine->currentAppId(), direction < 0 ? "rocker_left" : "rocker_right");
++  });
+
+   g_scriptSvc.http = &g_scriptHttp;
+   g_scriptSvc.mqtt = &g_scriptMqtt;
+diff --git a/tests/test_controls.py b/tests/test_controls.py
+index 90f4dd3..872af59 100644
+--- a/tests/test_controls.py
++++ b/tests/test_controls.py
+@@ -2,6 +2,7 @@
+ import json
+ import time
+ import urllib.request
++from pathlib import Path
+
+ import pytest
+ from test_platform import app
+@@ -151,6 +152,76 @@ def test_knob_detent_is_a_press_and_release_for_script_events(app):
+     assert current(app) == 'knob'
+
+
++def test_sonos_remote_captures_rotary_and_rocker_without_local_volume(app):
++    setup_controls(app, autoTransition=True)
++    source = (Path(__file__).parents[1] / 'apps/sonos_remote.ax').read_bytes()
++    request = urllib.request.Request(
++        app.base_url + '/api/v1/apps/script/sonos_remote', source,
++        {'Content-Type': 'text/plain'}, method='PUT')
++    with urllib.request.urlopen(request) as response:
++        assert json.load(response)['error'] is None
++    app('/api/v1/apps/sonos_remote/config', {'long_ms': 800}, 'PATCH')
++    assert current(app) == 'Time'
++    app('/sim/button/select', {'durationMs': 900}, 'POST')
++    wait_screen(app, lambda pixels: current(app) == 'sonos_remote' and any(pixels))
++
++    app('/sim/rotary/right', {}, 'POST')
++    app('/sim/rotary/left', {}, 'POST')
++    app('/sim/button/right', {'durationMs': 100}, 'POST')
++    time.sleep(.25)
++
++    assert current(app) == 'sonos_remote'
++    assert [app('/api/v1/settings')[key] for key in VOLUMES] == [50, 60, 70]
++    assert app('/api/v1/apps')[-1]['error'] is None
++
++    app('/sim/button/select', {'durationMs': 900}, 'POST')
++    deadline = time.monotonic() + 2
++    while current(app) == 'sonos_remote' and time.monotonic() < deadline:
++        time.sleep(.05)
++    assert current(app) != 'sonos_remote'
++
++
++def test_sonos_remote_is_hidden_from_carousel_until_global_hold(app):
++    setup_controls(app, autoTransition=True, appDurationMs=250)
++    source = (Path(__file__).parents[1] / 'apps/sonos_remote.ax').read_bytes()
++    request = urllib.request.Request(
++        app.base_url + '/api/v1/apps/script/sonos_remote', source,
++        {'Content-Type': 'text/plain'}, method='PUT')
++    with urllib.request.urlopen(request) as response:
++        assert json.load(response)['error'] is None
++    seen = set()
++    deadline = time.monotonic() + 4
++    while time.monotonic() < deadline:
++        seen.add(current(app))
++        time.sleep(.05)
++    assert {'Time', 'Date'} <= seen
++    assert 'sonos_remote' not in seen
++
++
++def test_sonos_remote_global_hold_overrides_visible_script(app):
++    setup_controls(app)
++    sonos = (Path(__file__).parents[1] / 'apps/sonos_remote.ax').read_bytes()
++    request = urllib.request.Request(
++        app.base_url + '/api/v1/apps/script/sonos_remote', sonos,
++        {'Content-Type': 'text/plain'}, method='PUT')
++    with urllib.request.urlopen(request) as response:
++        assert json.load(response)['error'] is None
++    consumer = (b'class Consumer\n def on_button_event(btn, event)\n return true\n end\n'
++                b' def draw()\n clear()\n pixel(0, 0, rgb(255, 0, 0))\n end\nend\n'
++                b'return Consumer()')
++    request = urllib.request.Request(
++        app.base_url + '/api/v1/apps/script/consumer', consumer,
++        {'Content-Type': 'text/plain'}, method='PUT')
++    with urllib.request.urlopen(request) as response:
++        assert json.load(response)['error'] is None
++    app('/api/v1/apps/sonos_remote/config', {'long_ms': 800}, 'PATCH')
++    app('/api/v1/apps/active', {'name': 'consumer', 'fast': True}, 'PUT')
++    wait_screen(app, lambda pixels: current(app) == 'consumer' and pixels[0] == 0xFF0000)
++
++    app('/sim/button/select', {'durationMs': 900}, 'POST')
++    wait_screen(app, lambda pixels: current(app) == 'sonos_remote' and any(pixels))
++
++
+ def test_navigation_lock_keeps_volume_controls_available(app):
+     setup_controls(app, blockNavigation=True)
+     app('/sim/rotary/right', {}, 'POST')
