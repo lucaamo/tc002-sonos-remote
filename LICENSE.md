@@ -103,5 +103,5 @@ this license does not and cannot override. They are listed in
 
 This TC002 target uses Linux adapters rather than the Arduino ESP32 runtime.
 The vendored upstream tree also retains its ESP32 build sources and notices;
-see [upstream's notices](upstream/awtrix-ng/THIRD-PARTY-NOTICES.md) for those
+see [upstream's notices](https://github.com/Blueforcer/awtrix-ng/blob/main/THIRD-PARTY-NOTICES.md) for those
 components. Their licenses and any rights they grant remain unchanged.

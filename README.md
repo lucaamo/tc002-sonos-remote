@@ -12,6 +12,7 @@ backups, MQTT credentials, Home Assistant tokens, or the third-party LaMetric
 icon artwork.
 
 ![Status: tested on a physical TC002](https://img.shields.io/badge/status-tested%20on%20TC002-2ea44f)
+![CI](https://github.com/lucaamo/tc002-sonos-remote/actions/workflows/ci.yml/badge.svg)
 ![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange)
 
 ## Controls
