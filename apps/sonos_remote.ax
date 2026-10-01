@@ -1,14 +1,16 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 2.3
+# @version 2.5
 # @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the bridge Sonos Remote topic"
 # @config device_root text "AWTRIX MQTT topic prefix" default="tc002-sonos-ng" maxlen=96 help="System > MQTT > Topic prefix on this TC002"
 # @config player text "Sonos player entity" default="" maxlen=128 help="Home Assistant entity, for example media_player.living_room"
 # @config step number "Volume step (%)" default=5 min=1 max=25
 # @config long_ms number "Long press (ms)" default=1200 min=600 max=3000
 # @config picker_ms number "Playlist picker timeout (ms)" default=8000 min=3000 max=30000 step=1000
-# @config media_id text "Playlist, favourite or URI" default="" maxlen=512
-# @config media_type text "Media content type" default="playlist" maxlen=64
+# @config playlist1 text "Playlist 1" default="" maxlen=768 help="Name|content id|content type"
+# @config playlist2 text "Playlist 2" default="" maxlen=768 help="Name|content id|content type"
+# @config playlist3 text "Playlist 3" default="" maxlen=768 help="Name|content id|content type"
+# @config playlist4 text "Playlist 4" default="" maxlen=768 help="Name|content id|content type"
 # @config icon_name text "Music Meter icon name" default="sonos_music_meter" maxlen=64
 # @config accent color "Music icon colour" default=#35DCC4
 
@@ -16,10 +18,11 @@ import json
 import string
 
 class SonosRemote
-  var root, device_root, player, step, long_ms, picker_ms, media_id, media_type, icon_name, accent
+  var root, device_root, player, step, long_ms, picker_ms, icon_name, accent
   var title, artist, playing, volume, label, artist_done, header_scroll
   var active, session_started, pressed_at, long_handled, osd_until, pending_until, last_state
   var playlists, picker, playlist_index, picker_until
+  var cover
 
   def init()
     self.root = store.get("root")
@@ -29,8 +32,6 @@ class SonosRemote
     self.long_ms = store.get("long_ms")
     self.picker_ms = store.get("picker_ms")
     if self.picker_ms == nil self.picker_ms = 8000 end
-    self.media_id = store.get("media_id")
-    self.media_type = store.get("media_type")
     self.icon_name = store.get("icon_name")
     self.accent = store.get("accent")
     if self.accent == nil self.accent = settings.get("textColor") end
@@ -50,9 +51,14 @@ class SonosRemote
     self.pending_until = 0
     self.last_state = 0
     self.playlists = []
+    self.add_playlist(store.get("playlist1"))
+    self.add_playlist(store.get("playlist2"))
+    self.add_playlist(store.get("playlist3"))
+    self.add_playlist(store.get("playlist4"))
     self.picker = false
     self.playlist_index = 0
     self.picker_until = 0
+    self.cover = []
   end
 
   def setup()
@@ -96,8 +102,6 @@ class SonosRemote
             self.send_playlist(self.playlists[self.playlist_index])
             self.picker = false
             self.picker_until = 0
-          elif !self.session_started && self.media_id != ""
-            self.send_media()
           else
             self.send("play_pause")
           end
@@ -155,10 +159,6 @@ class SonosRemote
     mqtt.publish(self.root + "/command", json.dump({"action":action, "player_entity_id":self.player, "value":value}))
   end
 
-  def send_media()
-    mqtt.publish(self.root + "/command", json.dump({"action":"play_media", "player_entity_id":self.player, "media_content_id":self.media_id, "media_content_type":self.media_type}))
-  end
-
   def send_playlist(item)
     var content_id = item.find("mediaContentId")
     var content_type = item.find("mediaContentType")
@@ -168,34 +168,14 @@ class SonosRemote
     self.session_started = true
   end
 
-  def load_playlists(payload)
-    var data = json.load(payload)
-    if !isinstance(data, list) return end
-    var clean = []
-    for item : data
-      if isinstance(item, map)
-        var name = item.find("name")
-        var content_id = item.find("mediaContentId")
-        var content_type = item.find("mediaContentType")
-        if name != nil && name != "" && content_id != nil && content_id != ""
-          if content_type == nil || content_type == "" content_type = "playlist" end
-          clean.push({"name":str(name), "mediaContentId":str(content_id), "mediaContentType":str(content_type)})
-        end
-      end
+  def add_playlist(spec)
+    if spec == nil || spec == "" return end
+    var match = re.search("^([^|]+)\\|([^|]+)\\|([^|]+)$", spec)
+    if match == nil
+      log("Sonos Remote: invalid playlist setting")
+      return
     end
-    self.playlists = clean
-    if size(clean) == 0
-      self.picker = false
-      self.playlist_index = 0
-    elif self.playlist_index >= size(clean)
-      self.playlist_index = 0
-    end
-    # A refresh can deliver the retained list just after entering the mode.
-    # Open the picker in that case instead of falling through to track controls.
-    if self.active && !self.session_started && !self.picker && size(clean) > 0
-      self.picker = true
-      self.picker_until = now_ms() + self.picker_ms
-    end
+    self.playlists.push({"name":match[1], "mediaContentId":match[2], "mediaContentType":match[3]})
   end
 
   def on_state(topic, payload)
@@ -218,11 +198,22 @@ class SonosRemote
         self.artist = string.toupper(payload)
         self.artist_done = text_ink_width(self.artist) <= width()
       end
-    elif topic == self.root + "/state/playlists"
-      self.load_playlists(payload)
+    elif topic == self.root + "/state/cover"
+      self.load_cover(payload)
     elif topic == self.root + "/state/error" && payload != ""
       self.title = payload
     end
+  end
+
+  def load_cover(payload)
+    self.cover = []
+    if payload == "" return end
+    var data = json.load(payload)
+    if !isinstance(data, map) return end
+    if data.find("width") != 10 || data.find("height") != 10 return end
+    var pixels = data.find("pixels")
+    if !isinstance(pixels, list) || size(pixels) != 100 return end
+    self.cover = pixels
   end
 
   def loop()
@@ -317,8 +308,14 @@ class SonosRemote
       text(osd_x + (osd_w - text_ink_width(self.label)) / 2, 14, self.label, 0xFFFFFF)
       return
     end
-    # Optional local 10x10 Music Meter; shapes are the portable fallback.
-    if !icon(self.icon_name, 0, 6)
+    if size(self.cover) == 100
+      for cover_y : 0 .. 9
+        for cover_x : 0 .. 9
+          pixel(cover_x, 6 + cover_y, self.cover[cover_y * 10 + cover_x])
+        end
+      end
+    # Optional local Music Meter; shapes are the portable fallback.
+    elif !icon(self.icon_name, 0, 6)
       var beat = (now_ms() / 160) % 3
       rect_fill(1, 12-beat, 2, 3+beat, self.accent)
       rect_fill(4, 9+beat, 2, 6-beat, 0x38BDF8)

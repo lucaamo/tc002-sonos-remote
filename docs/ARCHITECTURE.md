@@ -44,25 +44,25 @@ The bridge publishes retained text payloads to:
 - `<root>/state/volume`
 - `<root>/state/player_name`
 - `<root>/state/error`
-- `<root>/state/playlists` - a JSON array of `{name, mediaContentId,
-  mediaContentType}` entries
+
+Bridge `0.2.49` also publishes `<root>/state/cover`. Its JSON payload contains
+`width`, `height`, and exactly 100 RGB888 integers for a `10×10` image. An
+empty retained payload means that artwork is unavailable and tells the Berry
+app to use its local icon fallback. The protected Home Assistant image URL and
+Supervisor token stay inside the add-on.
 
 The bridge rejects unknown actions, invalid volume values, missing content, and
 entities that are not valid Home Assistant `media_player` objects.
 
 ## Playlist picker
 
-The Home Assistant bridge owns the ordered playlist list and validates a
-maximum of twelve uniquely named entries. The Berry app receives the retained
-JSON list and opens the picker whenever an inactive session enters Sonos
-Remote. Knob rotation changes only the highlighted index while the picker is
-open; a short press publishes `play_media` with the selected entry. The picker
-times out without starting media and never changes the existing mappings once
-the playback view is active.
-
-The bridge keeps the previous single `playlistMediaContentId` and
-`playlistMediaContentType` values as a compatibility input. If the new array is
-empty, it exposes that pair as one in-memory `Playlist 1` entry.
+The Berry app owns up to four ordered entries in its native AWTRIX settings.
+Each `Playlist 1`–`Playlist 4` field uses `Name|content id|content type` and an
+empty field is ignored. On entry, the script parses the fields locally and
+opens the picker without waiting for retained MQTT data. Knob rotation changes
+only the highlighted index while the picker is open; a short press publishes
+`play_media` with the selected entry. The picker times out without starting
+media and never changes the existing mappings once playback controls are active.
 
 ## Input and exclusive mode
 

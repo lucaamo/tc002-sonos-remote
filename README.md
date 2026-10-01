@@ -55,7 +55,8 @@ for the complete flow and concurrency rules.
 - Ulanzi TC002 with an AWTRIX NG TC002 build that supports Berry scripts.
 - MQTT enabled on both AWTRIX NG and Home Assistant, using the same broker.
 - [TC002 AWTRIX Bridge Home Assistant add-on](https://github.com/lucaamo/tc002-awtrix-ha-addon)
-  version `0.2.48` or newer.
+  version `0.2.49` or newer for album artwork (`0.2.48` is sufficient for the
+  playlist picker without artwork).
 - A Sonos entity exposed in Home Assistant as `media_player.*`.
 - For the global hold gesture, a firmware integration equivalent to the
   proof-of-concept patch in this repository. The patch itself targets one exact
@@ -68,10 +69,8 @@ for the complete flow and concurrency rules.
 2. Configure the add-on to use the same MQTT broker as AWTRIX NG. Prefer a
    dedicated MQTT account and keep its password in Home Assistant/AWTRIX
    settings, never in this repository or the Berry source.
-3. In the bridge Sonos settings, select the intended `media_player`, set the
-   volume step and long-press duration, then add up to twelve named playlists,
-   favourites or media URIs. Each entry has its own Home Assistant content id
-   and content type. The former single-item setting migrates automatically.
+3. In the bridge Sonos settings, enable the MQTT command and state relay. The
+   Berry app owns the player choice, volume step, gestures and playlist list.
 4. Leave the MQTT topic root at `tc002/sonos_remote/v2` unless you also change
    the bridge implementation.
 
@@ -109,19 +108,19 @@ Then open **Apps → Sonos Remote → settings** and configure:
 | Volume step | Percentage points per rocker press |
 | Long press | Hold duration used to enter/leave the remote |
 | Playlist picker timeout | Time available to choose an item after entry |
-| Playlist, favourite or URI | Optional media started by the first short press |
-| Media content type | Home Assistant type matching that media identifier |
+| Playlist 1–4 | `Name|content id|content type`; leave unused slots empty |
+| Music Meter icon name | Local `10×10` fallback icon used when artwork is unavailable |
 | Music icon colour | Colour used by the built-in compact fallback icon |
 
-Examples for `play_media`:
+Examples for one Playlist field:
 
-- Sonos favourite: `SQ:10` with type `favorite_item_id`.
-- Spotify playlist: `spotify:playlist:PLAYLIST_ID` with type `playlist`.
+- Sonos favourite: `Radio|SQ:10|favorite_item_id`.
+- Spotify playlist: `Relax|spotify:playlist:PLAYLIST_ID|playlist`.
 
 Player support for a content id/type pair should first be checked with Home
 Assistant's action tester.
 
-When one or more items are configured in the bridge, entering Sonos Remote
+When one or more items are configured in the Berry app, entering Sonos Remote
 opens a short picker. Rotate the knob to browse and press it to start the
 highlighted item. If the picker times out, the normal now-playing controls take
 over without starting anything. After a selection, rotation returns to
@@ -133,6 +132,15 @@ The tested device uses a locally resized `10×10` copy of LaMetric icon `22046`
 under the name `sonos_music_meter`. That file is not included because its
 redistribution terms were not established. Without it, the app draws a compact
 animated equalizer itself and remains fully functional.
+
+### Album artwork
+
+With bridge `0.2.49` or newer, Sonos Remote shows the current album artwork in
+the lower-left `10×10` area. The bridge fetches the Home Assistant-protected
+image, centre-crops and resizes it in memory, and publishes only 100 RGB pixel
+values. No Home Assistant token or original image URL is sent to the TC002, and
+the artwork is not written to the clock's filesystem. Missing or invalid images
+automatically fall back to the configured Music Meter icon.
 
 ## Global long-press shortcut
 
@@ -162,9 +170,9 @@ On a physical TC002 running AWTRIX NG 1.1.5, the prototype has verified:
 - persistence across two normal power cycles;
 - stock Ulanzi fallback at boot through the port's existing recovery gesture.
 
-The public v2.3 Berry source is byte-identical to the script used for the
-multi-playlist device test. Run the checks in [docs/TESTING.md](docs/TESTING.md)
-before publishing further changes.
+The public v2.5 Berry source is byte-identical to the script used for the
+multi-playlist and `10×10` album-art device tests. Run the checks in
+[docs/TESTING.md](docs/TESTING.md) before publishing further changes.
 
 ## License and trademarks
 

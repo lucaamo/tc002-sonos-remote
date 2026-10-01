@@ -39,9 +39,8 @@ useful evidence but does not replace looking at the physical panel.
 
 1. Confirm MQTT is connected on both Home Assistant and AWTRIX NG.
 2. Choose a test Sonos player at a safe volume.
-3. Publish `refresh` and confirm the player state topics and retained
-   `state/playlists` JSON update.
-4. Configure two named test entries, enter the remote, rotate between them and
+3. Publish `refresh` and confirm the retained player state topics update.
+4. Configure two named Playlist fields in the Berry app, enter the remote, rotate between them and
    confirm the highlighted name changes without leaving the app.
 5. Select one entry and confirm the player receives its content id and type.
 6. Test one short press, one clockwise detent, one counter-clockwise detent, and
@@ -52,6 +51,10 @@ useful evidence but does not replace looking at the physical panel.
    never flashes an older value.
 9. Test configured `play_media` with the Home Assistant action tester before
    invoking it from the TC002.
+10. Start a track with artwork and confirm that a `10×10` cover appears in
+    the lower-left area while the artist still uses the complete top row.
+11. Start a source without artwork and confirm that the local Music Meter icon
+    or built-in shape fallback appears without a script error.
 
 ## Physical global-shortcut checks
 
