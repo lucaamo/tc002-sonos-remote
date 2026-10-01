@@ -20,7 +20,9 @@ icon artwork.
 | TC002 control | Sonos action |
 | --- | --- |
 | Hold the main knob | Enter or leave exclusive Sonos Remote mode |
-| Short knob press | Play/pause; optionally start configured media on first press |
+| Rotate on entry | Browse the configured playlist/favourite list |
+| Short knob press on entry | Start the highlighted playlist or favourite |
+| Short knob press during playback | Play/pause |
 | Rotate clockwise | Next track |
 | Rotate counter-clockwise | Previous track |
 | Rocker `+` / `-` | Raise/lower Sonos volume by the configured step |
@@ -53,7 +55,7 @@ for the complete flow and concurrency rules.
 - Ulanzi TC002 with an AWTRIX NG TC002 build that supports Berry scripts.
 - MQTT enabled on both AWTRIX NG and Home Assistant, using the same broker.
 - [TC002 AWTRIX Bridge Home Assistant add-on](https://github.com/lucaamo/tc002-awtrix-ha-addon)
-  version `0.2.47` or newer.
+  version `0.2.48` or newer.
 - A Sonos entity exposed in Home Assistant as `media_player.*`.
 - For the global hold gesture, a firmware integration equivalent to the
   proof-of-concept patch in this repository. The patch itself targets one exact
@@ -66,10 +68,10 @@ for the complete flow and concurrency rules.
 2. Configure the add-on to use the same MQTT broker as AWTRIX NG. Prefer a
    dedicated MQTT account and keep its password in Home Assistant/AWTRIX
    settings, never in this repository or the Berry source.
-3. In the bridge Sonos settings, select the intended `media_player` and set the
-   volume step, optional favourite/playlist URI, content type, and long-press
-   duration. The Berry app can also select the player; the bridge verifies that
-   it exists before accepting a command.
+3. In the bridge Sonos settings, select the intended `media_player`, set the
+   volume step and long-press duration, then add up to twelve named playlists,
+   favourites or media URIs. Each entry has its own Home Assistant content id
+   and content type. The former single-item setting migrates automatically.
 4. Leave the MQTT topic root at `tc002/sonos_remote/v2` unless you also change
    the bridge implementation.
 
@@ -106,6 +108,7 @@ Then open **Apps → Sonos Remote → settings** and configure:
 | Sonos player entity | Home Assistant entity, for example `media_player.living_room` |
 | Volume step | Percentage points per rocker press |
 | Long press | Hold duration used to enter/leave the remote |
+| Playlist picker timeout | Time available to choose an item after entry |
 | Playlist, favourite or URI | Optional media started by the first short press |
 | Media content type | Home Assistant type matching that media identifier |
 | Music icon colour | Colour used by the built-in compact fallback icon |
@@ -117,6 +120,12 @@ Examples for `play_media`:
 
 Player support for a content id/type pair should first be checked with Home
 Assistant's action tester.
+
+When one or more items are configured in the bridge, entering Sonos Remote
+opens a short picker. Rotate the knob to browse and press it to start the
+highlighted item. If the picker times out, the normal now-playing controls take
+over without starting anything. After a selection, rotation returns to
+previous/next track and a short press returns to play/pause.
 
 ### Optional Music Meter icon
 
@@ -147,6 +156,7 @@ On a physical TC002, the prototype has verified:
 - entry by holding the knob from a normal carousel page;
 - an exclusive screen that remains visible during control;
 - play/pause, next, previous, and separate Sonos volume control;
+- the initial multi-playlist picker, rotary selection and timeout path;
 - the two-second volume overlay and delayed state reconciliation;
 - exit by a second hold and return to the normal carousel;
 - persistence across two normal power cycles;

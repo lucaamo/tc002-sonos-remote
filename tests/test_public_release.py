@@ -16,22 +16,30 @@ PATCH = (ROOT / "patches" / "tc002-v1.1.2-tc002.1-global-sonos-shortcut.patch").
 
 class PublicReleaseTests(unittest.TestCase):
     def test_berry_contract(self) -> None:
-        self.assertIn("# @version 2.1", APP)
+        self.assertIn("# @version 2.3", APP)
         self.assertIn('default="tc002/sonos_remote/v2"', APP)
         self.assertIn('"player_entity_id":self.player', APP)
         self.assertIn('"action":"play_media"', APP)
+        self.assertIn('"/state/playlists"', APP)
         self.assertTrue(APP.rstrip().endswith("return SonosRemote()"))
 
     def test_exclusive_input_mapping(self) -> None:
         self.assertIn("rotation.pause()", APP)
         self.assertIn("rotation.resume()", APP)
-        self.assertIn('btn == "right" self.send("next")', APP)
-        self.assertIn('btn == "left" self.send("previous")', APP)
-        self.assertIn('btn != "rocker_left" && btn != "rocker_right"', APP)
+        self.assertIn('"/event/knob"', APP)
+        self.assertIn('"/state/buttons/right"', APP)
+        self.assertIn('"/state/buttons/left"', APP)
         self.assertIn('self.send("play_pause")', APP)
 
+    def test_playlist_picker_contract(self) -> None:
+        self.assertIn("self.playlist_index = (self.playlist_index + turns) % count", APP)
+        self.assertIn('"media_content_id":content_id', APP)
+        self.assertIn('"media_content_type":content_type', APP)
+        self.assertIn('var heading = "PLAYLIST"', APP)
+        self.assertIn("self.picker_until = now_ms() + self.picker_ms", APP)
+
     def test_missing_optional_icon_has_fallback(self) -> None:
-        self.assertIn('if !icon("sonos_music_meter", 0, 6)', APP)
+        self.assertIn('if !icon(self.icon_name, 0, 6)', APP)
         self.assertIn("rect_fill", APP)
         self.assertIn("not included", README)
 

@@ -44,9 +44,25 @@ The bridge publishes retained text payloads to:
 - `<root>/state/volume`
 - `<root>/state/player_name`
 - `<root>/state/error`
+- `<root>/state/playlists` - a JSON array of `{name, mediaContentId,
+  mediaContentType}` entries
 
 The bridge rejects unknown actions, invalid volume values, missing content, and
 entities that are not valid Home Assistant `media_player` objects.
+
+## Playlist picker
+
+The Home Assistant bridge owns the ordered playlist list and validates a
+maximum of twelve uniquely named entries. The Berry app receives the retained
+JSON list and opens the picker whenever an inactive session enters Sonos
+Remote. Knob rotation changes only the highlighted index while the picker is
+open; a short press publishes `play_media` with the selected entry. The picker
+times out without starting media and never changes the existing mappings once
+the playback view is active.
+
+The bridge keeps the previous single `playlistMediaContentId` and
+`playlistMediaContentType` values as a compatibility input. If the new array is
+empty, it exposes that pair as one in-memory `Playlist 1` entry.
 
 ## Input and exclusive mode
 
@@ -56,9 +72,10 @@ short-press action immediately after entering the remote.
 
 `on_show()` pauses rotation and marks the app active. While active:
 
-- `on_button_event()` distinguishes short and long select presses and consumes
-  rotary left/right;
-- `on_button()` consumes the physical rocker and changes Sonos volume;
+- the official TC002 input topics distinguish short and long select presses,
+  rotary movement and the two rocker buttons;
+- the picker consumes rotary movement only during its initial selection phase;
+- the rocker changes Sonos volume without touching the local speaker;
 - `should_show()` returns true only for the active session, keeping the launcher
   out of the normal carousel;
 - `exit_mode()` resumes rotation and advances to the next app.

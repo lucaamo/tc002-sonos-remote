@@ -39,14 +39,18 @@ useful evidence but does not replace looking at the physical panel.
 
 1. Confirm MQTT is connected on both Home Assistant and AWTRIX NG.
 2. Choose a test Sonos player at a safe volume.
-3. Publish `refresh` and confirm all six state topics update.
-4. Test one short press, one clockwise detent, one counter-clockwise detent, and
+3. Publish `refresh` and confirm the player state topics and retained
+   `state/playlists` JSON update.
+4. Configure two named test entries, enter the remote, rotate between them and
+   confirm the highlighted name changes without leaving the app.
+5. Select one entry and confirm the player receives its content id and type.
+6. Test one short press, one clockwise detent, one counter-clockwise detent, and
    one rocker press.
-5. Confirm the rocker changes Sonos volume and leaves the local TC002 speaker
+7. Confirm the rocker changes Sonos volume and leaves the local TC002 speaker
    volume unchanged.
-6. Press the rocker repeatedly and confirm the two-second overlay restarts and
+8. Press the rocker repeatedly and confirm the two-second overlay restarts and
    never flashes an older value.
-7. Test configured `play_media` with the Home Assistant action tester before
+9. Test configured `play_media` with the Home Assistant action tester before
    invoking it from the TC002.
 
 ## Physical global-shortcut checks
