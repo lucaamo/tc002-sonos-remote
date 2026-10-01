@@ -51,8 +51,8 @@ useful evidence but does not replace looking at the physical panel.
    never flashes an older value.
 9. Test configured `play_media` with the Home Assistant action tester before
    invoking it from the TC002.
-10. Start a track with artwork and confirm that a `10×10` cover appears in
-    the lower-left area while the artist still uses the complete top row.
+10. Start a track with artwork and confirm that a `16×16` cover fills the left
+    side while artist and title remain readable in the 36 columns on the right.
 11. Start a source without artwork and confirm that the local Music Meter icon
     or built-in shape fallback appears without a script error.
 

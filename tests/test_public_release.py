@@ -16,7 +16,7 @@ PATCH = (ROOT / "patches" / "tc002-v1.1.2-tc002.1-global-sonos-shortcut.patch").
 
 class PublicReleaseTests(unittest.TestCase):
     def test_berry_contract(self) -> None:
-        self.assertIn("# @version 2.5", APP)
+        self.assertIn("# @version 2.6", APP)
         self.assertIn('default="tc002/sonos_remote/v2"', APP)
         self.assertIn('"player_entity_id":self.player', APP)
         self.assertIn('"action":"play_media"', APP)
@@ -44,14 +44,15 @@ class PublicReleaseTests(unittest.TestCase):
         self.assertIn("self.picker_until = now_ms() + self.picker_ms", APP)
 
     def test_missing_optional_icon_has_fallback(self) -> None:
-        self.assertIn('if !icon(self.icon_name, 0, 6)', APP)
+        self.assertIn('if !icon(self.icon_name, 3, 3)', APP)
         self.assertIn("rect_fill", APP)
         self.assertIn("not included", README)
 
     def test_album_cover_is_drawn_in_ram_with_icon_fallback(self) -> None:
         self.assertIn('"/state/cover"', APP)
-        self.assertIn("size(self.cover) == 100", APP)
-        self.assertIn("pixel(cover_x, 6 + cover_y", APP)
+        self.assertIn("size(self.cover) == 256", APP)
+        self.assertIn("pixel(cover_x, cover_y", APP)
+        self.assertIn("var text_x = 17", APP)
 
     def test_license_notice_is_preserved(self) -> None:
         notice = (

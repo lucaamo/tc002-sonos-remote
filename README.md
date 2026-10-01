@@ -55,8 +55,8 @@ for the complete flow and concurrency rules.
 - Ulanzi TC002 with an AWTRIX NG TC002 build that supports Berry scripts.
 - MQTT enabled on both AWTRIX NG and Home Assistant, using the same broker.
 - [TC002 AWTRIX Bridge Home Assistant add-on](https://github.com/lucaamo/tc002-awtrix-ha-addon)
-  version `0.2.49` or newer for album artwork (`0.2.48` is sufficient for the
-  playlist picker without artwork).
+  version `0.2.50` or newer for `16×16` album artwork (`0.2.49` provides the
+  earlier `10×10` layout; `0.2.48` is sufficient for playlists without artwork).
 - A Sonos entity exposed in Home Assistant as `media_player.*`.
 - For the global hold gesture, a firmware integration equivalent to the
   proof-of-concept patch in this repository. The patch itself targets one exact
@@ -135,10 +135,11 @@ animated equalizer itself and remains fully functional.
 
 ### Album artwork
 
-With bridge `0.2.49` or newer, Sonos Remote shows the current album artwork in
-the lower-left `10×10` area. The bridge fetches the Home Assistant-protected
-image, centre-crops and resizes it in memory, and publishes only 100 RGB pixel
-values. No Home Assistant token or original image URL is sent to the TC002, and
+With bridge `0.2.50` or newer, Sonos Remote shows the current album artwork at
+the panel's native `16×16` height. The bridge fetches the Home Assistant-protected
+image, centre-crops and resizes it in memory, and publishes only 256 RGB pixel
+values. Artist and title use the remaining 36 columns. No Home Assistant token
+or original image URL is sent to the TC002, and
 the artwork is not written to the clock's filesystem. Missing or invalid images
 automatically fall back to the configured Music Meter icon.
 
@@ -170,8 +171,8 @@ On a physical TC002 running AWTRIX NG 1.1.5, the prototype has verified:
 - persistence across two normal power cycles;
 - stock Ulanzi fallback at boot through the port's existing recovery gesture.
 
-The public v2.5 Berry source is byte-identical to the script used for the
-multi-playlist and `10×10` album-art device tests. Run the checks in
+The public v2.6 Berry source is byte-identical to the script used for the
+multi-playlist and `16×16` album-art device tests. Run the checks in
 [docs/TESTING.md](docs/TESTING.md) before publishing further changes.
 
 ## License and trademarks

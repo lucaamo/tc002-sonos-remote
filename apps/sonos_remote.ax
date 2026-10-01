@@ -1,6 +1,6 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 2.5
+# @version 2.6
 # @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the bridge Sonos Remote topic"
 # @config device_root text "AWTRIX MQTT topic prefix" default="tc002-sonos-ng" maxlen=96 help="System > MQTT > Topic prefix on this TC002"
 # @config player text "Sonos player entity" default="" maxlen=128 help="Home Assistant entity, for example media_player.living_room"
@@ -184,7 +184,7 @@ class SonosRemote
       self.title = payload == "" ? "Premi per avviare" : payload
     elif topic == self.root + "/state/artist"
       self.artist = payload == "" ? "SONOS" : string.toupper(payload)
-      self.artist_done = text_ink_width(self.artist) <= width()
+      self.artist_done = text_ink_width(self.artist) <= width() - 17
     elif topic == self.root + "/state/playing"
       self.playing = payload == "playing"
     elif topic == self.root + "/state/volume"
@@ -196,7 +196,7 @@ class SonosRemote
     elif topic == self.root + "/state/player_name"
       if self.artist == "SONOS" && payload != ""
         self.artist = string.toupper(payload)
-        self.artist_done = text_ink_width(self.artist) <= width()
+        self.artist_done = text_ink_width(self.artist) <= width() - 17
       end
     elif topic == self.root + "/state/cover"
       self.load_cover(payload)
@@ -210,9 +210,9 @@ class SonosRemote
     if payload == "" return end
     var data = json.load(payload)
     if !isinstance(data, map) return end
-    if data.find("width") != 10 || data.find("height") != 10 return end
+    if data.find("width") != 16 || data.find("height") != 16 return end
     var pixels = data.find("pixels")
-    if !isinstance(pixels, list) || size(pixels) != 100 return end
+    if !isinstance(pixels, list) || size(pixels) != 256 return end
     self.cover = pixels
   end
 
@@ -308,38 +308,38 @@ class SonosRemote
       text(osd_x + (osd_w - text_ink_width(self.label)) / 2, 14, self.label, 0xFFFFFF)
       return
     end
-    if size(self.cover) == 100
-      for cover_y : 0 .. 9
-        for cover_x : 0 .. 9
-          pixel(cover_x, 6 + cover_y, self.cover[cover_y * 10 + cover_x])
+    if size(self.cover) == 256
+      for cover_y : 0 .. 15
+        for cover_x : 0 .. 15
+          pixel(cover_x, cover_y, self.cover[cover_y * 16 + cover_x])
         end
       end
     # Optional local Music Meter; shapes are the portable fallback.
-    elif !icon(self.icon_name, 0, 6)
+    elif !icon(self.icon_name, 3, 3)
       var beat = (now_ms() / 160) % 3
-      rect_fill(1, 12-beat, 2, 3+beat, self.accent)
-      rect_fill(4, 9+beat, 2, 6-beat, 0x38BDF8)
-      rect_fill(7, 7-beat, 2, 8+beat, 0xFF45A4)
+      rect_fill(4, 12-beat, 2, 3+beat, self.accent)
+      rect_fill(7, 9+beat, 2, 6-beat, 0x38BDF8)
+      rect_fill(10, 7-beat, 2, 8+beat, 0xFF45A4)
     end
+    var text_x = 17
+    var text_w = width() - text_x
     if !self.artist_done
-      if scroll_text(0, 5, width(), self.artist, 0xFFFFFF, self.header_scroll) > 0
+      if scroll_text(text_x, 5, text_w, self.artist, 0xFFFFFF, self.header_scroll) > 0
         self.artist_done = true
       end
     else
       var artist_w = text_ink_width(self.artist)
-      if artist_w <= width()
-        text((width() - artist_w) / 2, 5, self.artist, 0xFFFFFF)
+      if artist_w <= text_w
+        text(text_x + (text_w - artist_w) / 2, 5, self.artist, 0xFFFFFF)
       else
-        text(0, 5, self.artist, 0xFFFFFF)
+        text(text_x, 5, self.artist, 0xFFFFFF)
       end
     end
-    var title_x = 11
-    var title_w = width() - title_x
     var title_ink = text_ink_width(self.title)
-    if title_ink <= title_w
-      text(title_x + (title_w - title_ink) / 2, 14, self.title, 0xFFFFFF)
+    if title_ink <= text_w
+      text(text_x + (text_w - title_ink) / 2, 14, self.title, 0xFFFFFF)
     else
-      scroll_text(title_x, 14, title_w, self.title, 0xFFFFFF)
+      scroll_text(text_x, 14, text_w, self.title, 0xFFFFFF)
     end
   end
 end

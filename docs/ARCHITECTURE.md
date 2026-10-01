@@ -45,8 +45,8 @@ The bridge publishes retained text payloads to:
 - `<root>/state/player_name`
 - `<root>/state/error`
 
-Bridge `0.2.49` also publishes `<root>/state/cover`. Its JSON payload contains
-`width`, `height`, and exactly 100 RGB888 integers for a `10×10` image. An
+Bridge `0.2.50` publishes `<root>/state/cover`. Its JSON payload contains
+`width`, `height`, and exactly 256 RGB888 integers for a `16×16` image. An
 empty retained payload means that artwork is unavailable and tells the Berry
 app to use its local icon fallback. The protected Home Assistant image URL and
 Supervisor token stay inside the add-on.
@@ -86,10 +86,9 @@ same app.
 
 ## Display state
 
-The 52×16 view has two text rows. The artist header is uppercase, white, and
-centred across the panel. It scrolls once when necessary, then remains in a
-readable resting form. The title is centred in the columns beside the lower
-10×10 icon and scrolls when it does not fit.
+The 52×16 view reserves the left `16×16` square for artwork. Artist and title
+are white, centred in the remaining 36 columns, and scroll independently when
+necessary. The artist remains uppercase.
 
 During a rocker change, the normal view is replaced for two seconds by a Sonos
 volume overlay. Every new press restarts that timer. `pending_until` blocks an
