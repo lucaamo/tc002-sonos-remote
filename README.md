@@ -151,7 +151,7 @@ is tracked in [AWTRIX NG discussion #66](https://github.com/Blueforcer/awtrix-ng
 
 ## Verification status
 
-On a physical TC002, the prototype has verified:
+On a physical TC002 running AWTRIX NG 1.1.5, the prototype has verified:
 
 - entry by holding the knob from a normal carousel page;
 - an exclusive screen that remains visible during control;
@@ -162,8 +162,9 @@ On a physical TC002, the prototype has verified:
 - persistence across two normal power cycles;
 - stock Ulanzi fallback at boot through the port's existing recovery gesture.
 
-The current public source adds only an icon fallback to the tested Berry logic.
-Run the checks in [docs/TESTING.md](docs/TESTING.md) before publishing changes.
+The public v2.3 Berry source is byte-identical to the script used for the
+multi-playlist device test. Run the checks in [docs/TESTING.md](docs/TESTING.md)
+before publishing further changes.
 
 ## License and trademarks
 
