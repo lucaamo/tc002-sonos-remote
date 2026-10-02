@@ -60,3 +60,18 @@ The old MQTT controller and pinned patch remain historical compatibility files.
 
 The maintainer decides catalog inclusion or official bundling. No new reply,
 Discord message or upstream PR is sent by these implementation steps.
+
+## Native artwork candidate (2026-10-02)
+
+The [native conversion candidate](../native-artwork/README.md) supplies real
+host-executed C++ JPEG/PNG decoding, 10×10/16×16 resampling, byte/dimension/
+allocation bounds, and cache/session generation handling. It is generic and
+contains no Home Assistant or Sonos installation identifiers. It is a source
+building block, **not an implemented firmware image API**.
+
+Integration into official beta is pending: its 1.1.5 source commit cannot be
+resolved in the accessible public repository, which lacks the matching Linux
+and TC002 adapters. The native HTTP worker, Berry bindings and device tests
+must be completed against those sources. No device firmware, Berry app or HA
+automation was changed for this candidate. A maintainer message draft is in
+that directory; it has not been sent.

@@ -11,6 +11,11 @@ Other firmware versions and TC001 are not verified. See
 [acceptance results and remaining checks](docs/TESTING.md) and
 [upstream readiness](docs/UPSTREAM_READINESS.md).
 
+A [native artwork conversion candidate](native-artwork/README.md) is available
+for maintainer review. Its C++ decoder and lifecycle coordinator are tested,
+but it is **not integrated into or installed on official beta 1.1.5**. It does
+not enable automatic cover download in the current Berry app.
+
 ## Controls and a beta limitation
 
 From any carousel page, **hold the top middle/select button for one second**,

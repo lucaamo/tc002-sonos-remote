@@ -23,6 +23,12 @@ Users who are permitted to use it may install and resize it locally under the
 name `sonos_music_meter`; the Berry app also contains an independent geometric
 fallback.
 
+The optional source-only native artwork candidate includes `stb_image` from
+<https://github.com/nothings/stb>, pinned in `native-artwork/vendor/provenance.json`.
+That third-party file retains its MIT license (option A); see
+`native-artwork/vendor/LICENSE-stb.txt`. The repository license does not override
+the decoder's upstream license.
+
 “Sonos” is a trademark of Sonos, Inc. “Spotify”, “Home Assistant”, “AWTRIX”,
 “Ulanzi”, and “LaMetric” belong to their respective owners. Their use here
 identifies interoperability targets and does not imply endorsement.

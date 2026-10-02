@@ -1,5 +1,26 @@
 # Test record and release checks
 
+## Native artwork source candidate — 2026-10-02
+
+The separate [native candidate](../native-artwork/README.md) has 13 native
+test cases using the real C++ implementation, including 40 deterministic
+malformed-image mutations. Host tests pass under AddressSanitizer and
+UndefinedBehaviorSanitizer on macOS ARM64. Linux sanitizer CI also exercises
+the same driver. Tests include progressive/baseline JPEG, PNG alpha/palette/
+grayscale, 10×10/16×16, center crop, area resampling, source and streaming-body
+bounds, allocation-budget refusal, cache hits, stale and duplicate completions,
+size changes, retry and unload invalidation.
+
+A private real-current-album input (83,636 encoded bytes) also converts into
+256 RGB888 pixels; decoder payload allocation peak was 2,887,743 bytes on the
+host. No album asset, signed URL or user's metadata is committed. This is a
+host measurement, not ARMv7 memory/CPU/FPS evidence.
+
+**Not tested or installed on TC002:** native HTTP download adapter, Berry
+image bindings, target ARM build, RAM/FPS/input latency and firmware updates.
+Matching beta source is needed to finish those checks. Existing Sonos Remote,
+HA automation, TC001 and CasaViva were preserved.
+
 ## Verified on 2026-10-02
 
 Environment: official TC002 beta AWTRIX NG **1.1.5**, Home Assistant **2026.9.4**.
