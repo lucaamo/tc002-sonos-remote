@@ -1,6 +1,6 @@
 # Sonos Remote for AWTRIX NG on Ulanzi TC002
 
-A reusable Berry controller for one Home Assistant Sonos player. Version 3.2.1
+A reusable Berry controller for one Home Assistant Sonos player. Version 3.2.2
 uses AWTRIX NG's official **on-demand** framework and a Home Assistant blueprint.
 No TC002 AWTRIX Bridge add-on, private firmware patch, Home Assistant token on
 the clock, or author's network configuration is required.

@@ -21,9 +21,17 @@ def run(base, topic_root, player, device_root):
     module_name='sonos_clean_test_names'
     playlist_name='sonos_clean_test_playlists'
     app_name='sonos_clean_test'
-    existing={a['name'] for a in request('GET','apps')}
+    initial_apps=request('GET','apps')
+    existing={a['name'] for a in initial_apps}
     if {module_name,playlist_name,app_name} & existing:
         raise RuntimeError('Test names already exist; refusing to replace them')
+    current=request('GET','device')['currentApp']
+    if any(a['name']==current and a.get('ondemand') for a in initial_apps):
+        # Exit the previous controller before launching the isolated probe.
+        # Its on_hide must release blockNavigation before our setup takes it.
+        request('POST','apps/next')
+        if request('GET','device')['currentApp']==current:
+            raise RuntimeError('Previous on-demand controller did not exit')
     module=(ROOT/'apps/sonos_artist_names.ax').read_text().replace('sonos_artist_names',module_name)
     playlists=(ROOT/'apps/sonos_playlists.ax').read_text().replace('sonos_playlists',playlist_name)
     app=(ROOT/'apps/sonos_remote.ax').read_text().replace('sonos_artist_names',module_name).replace('sonos_playlists',playlist_name)
@@ -33,6 +41,12 @@ def run(base, topic_root, player, device_root):
     app=app.replace('  def send_value(action, value)\n', '  def send_value(action, value)\n    raise "test_failed", "unexpected volume command"\n')
     app=app.replace('  def send_playlist(item)\n', '  def send_playlist(item)\n    raise "test_failed", "unexpected playlist confirmation"\n')
     app=app.replace('    self.last_state = now_ms()', '    shared.set("rx", now_ms())\n    if topic == self.root + "/state/title" shared.set("title", payload) end\n    if topic == self.root + "/state/volume" shared.set("volume", payload) end\n    self.last_state = now_ms()')
+    # Use a fixed, overflowing artist only in this isolated probe. A renderer
+    # configured for one finite pass can leave the entire header blank.
+    app=app.replace('self.set_artist(payload)', 'self.set_artist("Backstreet Boys")')
+    app=app.replace('      scroll_text(text_x, 5, text_w, self.artist, 0xFFFFFF, self.header_scroll)',
+        '      var passes = scroll_text(text_x, 5, text_w, self.artist, 0xFFFFFF, self.header_scroll)\n'
+        '      shared.set("artist_passes", passes)')
     settings=request('GET','settings')
     dwell=settings.get('appDurationMs',7000)/1000+1
     if dwell>50: raise RuntimeError('Carousel dwell exceeds bounded smoke-test wait')
@@ -140,10 +154,13 @@ def run(base, topic_root, player, device_root):
         deadline=launched+(timedout+500)/1000+6
         passed=set()
         picker_frame=False
+        artist_passes=0
         while time.monotonic()<deadline:
             row=next(a for a in request('GET','apps') if a['name']==app_name)
             if row.get('error'): raise AssertionError(row['error'])
             shared=request('GET','scripts/shared')
+            artist_passes=max(artist_passes,max((i['value'] for i in shared
+                if i.get('owner')==app_name and i.get('key')=='artist_passes'),default=0))
             passed.update(i['key'] for i in shared
                           if i.get('owner')==app_name and i.get('key') in stages and i.get('value') is True)
             if 'opened' in passed and 'cancelled' not in passed:
@@ -155,6 +172,7 @@ def run(base, topic_root, player, device_root):
         for stage in stages:
             check(stage in passed,'live playlist '+stage)
         check(picker_frame,'playlist selector renders on actual display')
+        check(artist_passes>=2,'native renderer continues artist scrolling beyond the first pass')
         check(request('GET','device')['currentApp']!=app_name,'backend exit path unloads through native MQTT')
         check(request('GET','settings').get('blockNavigation') is False,'native exit releases navigation')
         return report

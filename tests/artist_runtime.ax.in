@@ -49,7 +49,7 @@ def exercise()
   var text_ink_width = def (s) return size(s) * 5 end
   var text = def (x,y,s,c) calls.push({"kind":"text","x":x,"y":y,"value":s,"color":c}) end
   var rect_fill = def (x,y,w,h,c) calls.push({"kind":"clear","x":x,"y":y,"width":w,"height":h}) end
-  var scroll_text = def (x,y,w,s,c,opts) calls.push({"kind":"scroll","value":s,"width":w}); return completed end
+  var scroll_text = def (x,y,w,s,c,opts) calls.push({"kind":"scroll","value":s,"width":w,"repeat":opts != nil ? opts["repeat"] : 0}); return completed end
   var settings = module("test_settings")
   var navigation_blocked = false
   settings.get = def (key) return nil end
@@ -77,6 +77,7 @@ __CLASS__
   app.draw_artist(17,35)
   check(size(calls)==1 && calls[0]["kind"]=="scroll" && calls[0]["value"]=="VASCO ROSSI", "full first pass")
   check(!app.artist_done, "not complete too early")
+  check(calls[0]["repeat"]==1, "alias requests one native pass")
   calls.clear()
   completed = 1
   app.draw_artist(17,35)
@@ -95,10 +96,12 @@ __CLASS__
   app.draw_artist(17,35)
   app.draw_artist(17,35)
   check(size(calls)==2 && calls[0]["kind"]=="scroll" && calls[1]["value"]=="BACKSTREET BOYS", "unconfigured group keeps scrolling")
+  check(calls[0]["repeat"]==0 && calls[1]["repeat"]==0, "unconfigured artist has unlimited native passes")
   app.set_artist("Artista Lungo")
   calls.clear()
   app.draw_artist(17,35)
   check(size(calls)==1 && calls[0]["kind"]=="scroll", "oversized alias keeps full name")
+  check(calls[0]["repeat"]==0, "oversized alias has unlimited native passes")
   app.set_artist("Sting")
   calls.clear()
   app.draw_artist(17,35)

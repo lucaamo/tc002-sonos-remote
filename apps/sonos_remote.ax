@@ -1,6 +1,6 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 3.2.1
+# @version 3.2.2
 # @ondemand
 # @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the Home Assistant blueprint MQTT root"
 # @config device_root text "AWTRIX MQTT topic prefix" default="" maxlen=96 help="Copy System > MQTT > Topic prefix from your TC002"
@@ -260,6 +260,9 @@ class SonosRemote
     # Unknown artists, groups and oversized aliases keep scrolling intact.
     var short_w = text_ink_width(self.artist_rest)
     var use_short = self.artist_rest != "" && short_w <= text_w
+    # A finite repeat stops the native renderer offscreen after that pass.
+    # Only aliases need one pass; full names must continue indefinitely.
+    self.header_scroll["repeat"] = use_short ? 1 : 0
     if !use_short
       scroll_text(text_x, 5, text_w, self.artist, 0xFFFFFF, self.header_scroll)
       return

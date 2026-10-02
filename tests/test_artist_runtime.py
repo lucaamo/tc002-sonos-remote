@@ -81,7 +81,7 @@ class ArtistRuntimeTests(unittest.TestCase):
                           if isinstance(item.get("value"), str)
                           and (match := re.fullmatch(r"(\d+) runtime checks passed", item["value"]))]
                 if counts:
-                    self.assertGreaterEqual(max(counts), 89, "runtime coverage unexpectedly decreased")
+                    self.assertGreaterEqual(max(counts), 92, "runtime coverage unexpectedly decreased")
                     print(f"Berry runtime: {max(counts)} checks passed")
                     break
                 time.sleep(0.1)

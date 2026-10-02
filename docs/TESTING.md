@@ -10,12 +10,13 @@ repository. No firmware was flashed or reset for these checks.
 | --- | --- |
 | Source/privacy/contract tests | unittest suite; private defaults absent |
 | Blueprint protocol validation | 30 fixtures locally; 29 JSON-serializable fixtures rendered in actual HA, all passed |
-| Actual Berry execution | 89 assertions, including global artist rules with a 400-entry catalogue, priority overrides, ten-slot selection and native exit payloads, in temporary headless probe, passed for 3.2.1 |
+| Actual Berry execution | 92 assertions, including global artist rules with a 400-entry catalogue, priority overrides, finite/continuous native scroll settings, ten-slot selection and native exit payloads, in temporary headless probe, passed for 3.2.2 |
 | Fresh namespace | New app/module identities, empty playlists/artist rules and entity/prefix defaults |
 | Independent HA backend | Different Sonos entity, unique MQTT root; existing add-on does not own this root |
 | Native registration/launch | API reports ondemand=true; app starts and draws 52×16 text |
 | Standalone metadata | New app receives nonempty track title from the blueprint |
 | Display ownership | App remains selected beyond global carousel dwell |
+| Continuous artist rendering | Isolated on-demand probe observes at least two completed native passes of an unconfigured long artist; 21 smoke checks passed for 3.2.2 |
 | Native API exit | Another carousel app becomes active and blockNavigation returns false |
 | Actual HA service | MQTT volume command invokes media_player.volume_set at the existing volume; trace finished successfully |
 | Invalid incoming commands | Malformed JSON, out-of-range volume and wrong entity abort before services |
@@ -46,7 +47,7 @@ AWTRIX_TEST_URL=http://AWTRIX_IP python3 -m unittest tests.test_artist_runtime -
 
 This uploads an isolated module and a headless probe, then removes them in
 `finally`. It executes the actual app class using local clock, rendering,
-settings, MQTT and rotation fakes. Eighty-nine assertions cover artist parsing,
+settings, MQTT and rotation fakes. Ninety-two assertions cover artist parsing,
 first-pass completion, centring and group scrolling; native select suppression,
 button repeat, duplicate MQTT suppression, rotary direction and picker;
 optimistic volume and stale echoes; malformed/valid artwork; offline recovery
@@ -75,16 +76,22 @@ python3 tools/smoke_ondemand.py --url http://AWTRIX_IP \
 ```
 
 The helper refuses to replace existing test names, installs temporary app/module
-identities with neutral defaults and verifies twenty lifecycle/frame/metadata
+identities with neutral defaults and verifies twenty-one lifecycle/frame/metadata
 checks. It sends only refresh media commands. Timers inject knob holds and a
 turn into the production handler, checking picker open, selection, cancellation,
 reopening and timeout on the real display. The temporary playlist module has
 ten synthetic entries, exercises browsing to the tenth and is never confirmed.
+The probe fixes its artist to a long unconfigured band name and checks at least
+two completed native scrolling passes. Version 3.2.1 used a finite repeat for
+this case, leaving the header offscreen after its first pass. Version 3.2.2
+uses unlimited repeats unless a fitting alias is explicitly configured.
 It then calls the production `exit_mode()`;
 its actual native MQTT command must unload the app. This catches the Berry
 exit-path defect that an HTTP-only exit test missed. The helper removes its
 scripts in `finally`. It does not reset or replace the
-production controller. It bounds the dwell test to 50 seconds. Remove the
+production controller's source or settings. If a controller is already open,
+the helper exits it to the normal carousel before launching its isolated app.
+It bounds the dwell test to 50 seconds. Remove the
 separately created test automation and its retained state topics afterward.
 The earlier v3.0.1 helper passed twelve checks, including exit through the then
 app-exit knob handler. In 3.1.0 that gesture is intentionally playlist selection.

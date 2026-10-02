@@ -17,7 +17,7 @@ PATCH = (ROOT / "patches" / "tc002-v1.1.2-tc002.1-global-sonos-shortcut.patch").
 
 class PublicReleaseTests(unittest.TestCase):
     def test_berry_contract(self) -> None:
-        self.assertIn("# @version 3.2.1", APP)
+        self.assertIn("# @version 3.2.2", APP)
         self.assertIn('default="tc002/sonos_remote/v2"', APP)
         self.assertIn('"player_entity_id":self.player', APP)
         self.assertIn('"action":"play_media"', APP)
