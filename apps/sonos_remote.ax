@@ -1,12 +1,12 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 3.0.1
+# @version 3.1.0
 # @ondemand
 # @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the Home Assistant blueprint MQTT root"
 # @config device_root text "AWTRIX MQTT topic prefix" default="" maxlen=96 help="Copy System > MQTT > Topic prefix from your TC002"
 # @config player text "Sonos player entity" default="" maxlen=128 help="Home Assistant entity, for example media_player.living_room"
 # @config step number "Volume step (%)" default=5 min=1 max=25
-# @config long_ms number "Knob exit hold (ms)" default=1200 min=600 max=3000
+# @config long_ms number "Playlist picker hold (ms)" default=1200 min=600 max=3000 help="Hold and release the knob to open or cancel playlist selection"
 # @config picker_ms number "Playlist picker timeout (ms)" default=8000 min=3000 max=30000 step=1000
 # @config playlist1 text "Playlist 1" default="" maxlen=768 help="Name|content id|content type"
 # @config playlist2 text "Playlist 2" default="" maxlen=768 help="Name|content id|content type"
@@ -22,7 +22,7 @@ import sonos_artist_names
 class SonosRemote
   var root, device_root, player, step, long_ms, picker_ms, icon_name, accent
   var title, artist, playing, volume, label, artist_done, artist_rest, header_scroll
-  var active, exit_pending, session_started, pressed_at, long_handled, osd_until, pending_until, last_state, last_refresh, entered_at, select_at
+  var active, exit_pending, session_started, pressed_at, osd_until, pending_until, last_state, last_refresh, entered_at
   var playlists, picker, playlist_index, picker_until
   var cover
 
@@ -50,13 +50,11 @@ class SonosRemote
     self.exit_pending = false
     self.session_started = false
     self.pressed_at = -1
-    self.long_handled = false
     self.osd_until = 0
     self.pending_until = 0
     self.last_state = 0
     self.last_refresh = 0
     self.entered_at = 0
-    self.select_at = -1
     self.playlists = []
     self.add_playlist(store.get("playlist1"))
     self.add_playlist(store.get("playlist2"))
@@ -89,8 +87,7 @@ class SonosRemote
     self.session_started = false
     self.osd_until = 0
     self.playlist_index = 0
-    self.picker = size(self.playlists) > 0
-    self.picker_until = self.picker ? now_ms() + self.picker_ms : 0
+    self.open_picker()
     settings.set("blockNavigation", true)
     self.entered_at = now_ms()
     self.last_refresh = now_ms()
@@ -99,27 +96,25 @@ class SonosRemote
   end
 
   def on_control(topic, payload)
-    if self.exit_pending return end
+    if !self.active || self.exit_pending return end
     var knob_button = self.device_root + "/state/buttons/knob"
     if topic == knob_button
       if payload == "1"
         self.pressed_at = now_ms()
-        self.long_handled = false
         return
       end
       if payload == "0" && self.pressed_at >= 0
         var held = now_ms() - self.pressed_at
         self.pressed_at = -1
         if held >= self.long_ms
-          self.long_handled = true
-          if self.active self.exit_mode() end
-        elif self.active
+          if self.picker self.close_picker()
+          else self.open_picker() end
+        else
           self.confirm_or_toggle()
         end
       end
       return
     end
-    if !self.active return end
     if topic == self.device_root + "/event/knob"
       var m = re.search("\\\"turn\\\":[ ]*(-?[0-9]+)", payload)
       if m != nil
@@ -142,25 +137,32 @@ class SonosRemote
   def confirm_or_toggle()
     if self.picker && size(self.playlists) > 0
       self.send_playlist(self.playlists[self.playlist_index])
-      self.picker = false
-      self.picker_until = 0
+      self.close_picker()
     else
       self.send("play_pause")
     end
     self.session_started = true
   end
 
+  def open_picker()
+    if size(self.playlists) == 0 return end
+    self.picker = true
+    self.picker_until = now_ms() + self.picker_ms
+    # A deliberate picker request must be visible immediately. Keep the
+    # independent volume settling window so stale HA echoes remain ignored.
+    self.osd_until = 0
+  end
+
+  def close_picker()
+    self.picker = false
+    self.picker_until = 0
+  end
+
   def on_button_event(btn, event)
     if !self.active || self.exit_pending return true end
-    if btn == "select"
-      if event == "press" self.select_at = now_ms() end
-      if event == "release" && self.select_at >= 0
-        var held = now_ms() - self.select_at
-        self.select_at = -1
-        # Firmware synthesizes release when its 1-second hold ends the app.
-        if held < 900 self.confirm_or_toggle() end
-      end
-    elif event == "press" || event == "repeat"
+    # Select hold is the firmware's local exit. Its short press and synthetic
+    # hold release must never launch a playlist or toggle Sonos playback.
+    if event == "press" || event == "repeat"
       if btn == "right" self.adjust_volume(self.step)
       elif btn == "left" self.adjust_volume(-self.step) end
     end
@@ -308,8 +310,7 @@ class SonosRemote
       return
     end
     if self.picker && self.picker_until != 0 && now >= self.picker_until
-      self.picker = false
-      self.picker_until = 0
+      self.close_picker()
     end
     if now - self.last_refresh >= 2500
       self.send("refresh")
@@ -329,15 +330,12 @@ class SonosRemote
 
   def on_hide()
     self.pressed_at = -1
-    self.select_at = -1
-    self.long_handled = false
     settings.set("blockNavigation", false)
     self.active = false
     self.exit_pending = false
     self.osd_until = 0
     self.pending_until = 0
-    self.picker = false
-    self.picker_until = 0
+    self.close_picker()
   end
 
   def exit_mode()

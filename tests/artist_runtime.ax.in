@@ -9,8 +9,10 @@ var sonos_artist_names = sonos_artist_test_names
 
 # Run the actual production class with lexical, app-local fakes. No MQTT
 # subscriptions, commands, navigation or speaker settings reach real hardware.
+var check_stats = {"count":0}
 def check(condition, message)
   if !condition raise "test_failed", message end
+  check_stats["count"] += 1
 end
 
 def exercise()
@@ -34,6 +36,8 @@ def exercise()
   var height = def () return 16 end
   var clear = def () calls.clear() end
   var line = def (x1,y1,x2,y2,c) return nil end
+  var icon = def (name,x,y) return false end
+  var pixel = def (x,y,c) return nil end
   var text_ink_width = def (s) return size(s) * 5 end
   var text = def (x,y,s,c) calls.push({"kind":"text","x":x,"y":y,"value":s,"color":c}) end
   var rect_fill = def (x,y,w,h,c) calls.push({"kind":"clear","x":x,"y":y,"width":w,"height":h}) end
@@ -112,11 +116,15 @@ __CLASS__
   app.on_button_event("select", "press")
   clock += 100
   check(app.on_button_event("select", "release"), "native press claimed")
-  check(size(commands)==1 && commands[0]["action"]=="play_pause", "short native select once")
+  check(size(commands)==0, "short native select has no duplicate music action")
   app.on_button_event("select", "press")
   clock += 1000
   app.on_button_event("select", "release")
-  check(size(commands)==1, "firmware long-release never toggles playback")
+  check(size(commands)==0, "firmware long-release never toggles playback")
+  app.on_control("test_clock/state/buttons/knob", "1")
+  clock += app.long_ms
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(!app.picker && exits==0 && size(commands)==0, "hold with no playlists is harmless")
   app.volume = 40
   app.on_button_event("right", "press")
   check(app.volume==45 && commands[-1]["value"]==45, "native right changes Sonos")
@@ -146,14 +154,17 @@ __CLASS__
   app.on_control("test_clock/event/knob", "{\"turn\":-1}")
   check(commands[-1]["action"]=="previous", "MQTT rotary reverses track")
   app.add_playlist("Test list|spotify:playlist:EXAMPLE|playlist")
+  app.add_playlist("Second|SQ:10|favorite_item_id")
+  app.add_playlist("Third|spotify:playlist:THIRD|playlist")
+  app.add_playlist("Fourth|spotify:playlist:FOURTH|playlist")
   app.on_hide()
   app.on_show()
   app.on_control("test_clock/state/buttons/knob", "0")
   check(app.picker, "entry release cannot launch playlist")
-  app.on_button_event("select", "press")
+  app.on_control("test_clock/state/buttons/knob", "1")
   clock += 100
-  app.on_button_event("select", "release")
-  check(!app.picker && commands[-1]["action"]=="play_media", "native selection starts named playlist")
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(!app.picker && commands[-1]["action"]=="play_media", "short knob selection starts named playlist")
   check(commands[-1]["media_content_id"]=="spotify:playlist:EXAMPLE", "playlist ID preserved")
   app.load_cover("not JSON")
   check(size(app.cover)==0, "malformed cover does not crash")
@@ -173,7 +184,65 @@ __CLASS__
   app.on_control("test_clock/state/buttons/knob", "1")
   clock += app.long_ms
   app.on_control("test_clock/state/buttons/knob", "0")
-  check(exits==1 && app.exit_pending && size(commands)==0, "hold boundary requests native exit without playback")
+  check(app.picker && !app.exit_pending && exits==0 && size(commands)==0, "hold boundary opens picker without exiting or playback")
+  check(app.picker_until==clock+app.picker_ms, "opening picker starts fresh timeout")
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(app.picker && size(commands)==0, "duplicate long release never confirms")
+  app.on_control("test_clock/event/knob", "{\"turn\":-1}")
+  check(app.playlist_index==3 && size(commands)==0, "picker wraps backwards without track commands")
+  clock += 500
+  app.on_control("test_clock/event/knob", "{\"turn\":2}")
+  check(app.playlist_index==1 && app.picker_until==clock+app.picker_ms && size(commands)==0, "picker wraps forwards and renews timeout")
+  app.on_button_event("select", "press")
+  clock += 100
+  app.on_button_event("select", "release")
+  check(app.picker && size(commands)==0, "short top select cannot confirm picker")
+  app.on_control("test_clock/state/buttons/knob", "1")
+  clock += app.long_ms
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(!app.picker && app.picker_until==0 && app.playlist_index==1 && size(commands)==0 && exits==0, "second hold cancels without changing playback or choice")
+  app.osd_until = clock+2000
+  app.pending_until = clock+3000
+  var pending = app.pending_until
+  app.on_control("test_clock/state/buttons/knob", "1")
+  clock += app.long_ms
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(app.picker && app.playlist_index==1 && app.osd_until==0, "reopen retains choice and immediately dismisses volume overlay")
+  check(app.pending_until==pending, "opening picker preserves stale-volume protection")
+  calls.clear()
+  app.draw()
+  check(calls[0]["value"]=="PLAYLIST" && calls[-1]["value"]=="Second", "opened picker renders selected playlist")
+  app.on_control("test_clock/state/buttons/knob", "1")
+  clock += 100
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(!app.picker && app.picker_until==0 && size(commands)==1 && commands[-1]["action"]=="play_media", "short press confirms reopened picker exactly once")
+  check(commands[-1]["media_content_id"]=="SQ:10" && commands[-1]["media_content_type"]=="favorite_item_id", "selected favourite content and type preserved")
+  commands.clear()
+  app.open_picker()
+  var deadline = app.picker_until
+  app.on_state(app.root+"/state/title", "Current track")
+  app.on_state(app.root+"/state/volume", "48")
+  check(app.picker && app.picker_until==deadline, "periodic metadata never closes or restarts picker")
+  clock = deadline-1
+  app.loop()
+  check(app.picker, "picker remains before timeout boundary")
+  clock = deadline
+  app.loop()
+  check(!app.picker && app.picker_until==0 && exits==0, "timeout boundary returns to music without exit")
+  var only_refresh = true
+  for command : commands
+    if command["action"]!="refresh" only_refresh = false end
+  end
+  check(only_refresh, "picker timeout never launches or toggles music")
+  calls.clear()
+  app.draw()
+  check(calls[-1]["value"]=="Current track", "timeout restores now-playing display")
+  commands.clear()
+  app.on_control("test_clock/event/knob", "{\"turn\":1}")
+  check(commands[-1]["action"]=="next", "rotary returns to track control after timeout")
+  commands.clear()
+  app.exit_mode()
+  check(exits==1 && app.exit_pending && size(commands)==0, "backend exit requests native path without playback")
   check(exit_retained==false, "exit command is never retained")
   app.exit_mode()
   app.on_control("test_clock/state/buttons/knob", "0")
@@ -199,11 +268,13 @@ __CLASS__
   app.loop()
   check(exits==3 && app.exit_pending, "offline backend requests same native exit")
   app.on_hide()
-  check(!app.active && !navigation_blocked && app.select_at==-1, "hide releases navigation and press state")
+  check(!app.active && !navigation_blocked && app.pressed_at==-1 && !app.picker, "hide releases navigation and press state")
   commands.clear()
+  app.on_control("test_clock/state/buttons/knob", "1")
+  check(app.pressed_at==-1, "inactive knob press is ignored")
   app.on_control("test_clock/event/knob", "{\"turn\":1}")
   check(size(commands)==0, "inactive app never handles rotary")
-  shared.set("sonos_artist_regression", "54 runtime checks passed")
+  shared.set("sonos_artist_regression", str(check_stats["count"])+" runtime checks passed")
 end
 
 class Regression

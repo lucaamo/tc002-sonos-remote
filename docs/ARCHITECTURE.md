@@ -28,18 +28,23 @@ invoke `on_show()` consistently in the smoke test. `on_show()` is an idempotent
 fallback. The firmware, not manual `rotation.pause()`, owns exclusive display.
 
 `on_button_event` claims top-button presses. Left/right presses and repeat
-change Sonos volume; select press records time, and a release below 900 ms
-confirms the picker or toggles play/pause. The guard suppresses the firmware's
-synthetic select release at its one-second hold boundary. Native select-hold
-always exits the on-demand session, including when navigation is blocked.
+change Sonos volume. Select events cause no music action; its short press and
+the firmware's synthetic release cannot accidentally confirm a playlist or
+toggle playback. Native select-hold always exits the on-demand session,
+including when navigation is blocked.
 
 The app subscribes to `<device_root>/state/buttons/knob` and
 `<device_root>/event/knob` only while loaded. It never subscribes to MQTT copies
-of left/right/select. Knob button edges distinguish short press from exit hold;
+of left/right/select. Knob button edges distinguish short press from picker hold;
 rotary `turn` direction either selects a playlist or requests next/previous.
+Only the release resolves a knob gesture. A release at or above `long_ms`
+opens the picker during music or cancels an open picker; it never also executes
+the short action. An unmatched release is ignored. Inactive/pending-exit
+sessions ignore all knob input. Short knob press confirms an open picker or
+toggles music. No configured playlists means a long hold is a harmless no-op.
 `blockNavigation=true` suppresses the local knob brightness/volume panel and
 Assist path. `on_hide()` resets held presses, timers and navigation blocking.
-`exit_mode()` publishes a non-retained empty payload to the clock's native
+The backend-loss failsafe's `exit_mode()` publishes a non-retained empty payload to the clock's native
 `<device_root>/cmd/apps/next` command. On beta 1.1.5 `rotation.next()` inside
 the on-demand callback reopened Sonos Remote; native HTTP/MQTT next correctly
 unloads it. This distinction must be checked on real firmware, not replaced by
@@ -114,9 +119,16 @@ that drawing path. Do not run an old add-on and blueprint on the same root.
 ## Playlists and display
 
 Four Berry `Name|content id|content type` settings are parsed once on launch.
-No configured entries means immediate now-playing controls. Otherwise rotation
-selects an entry, short select/knob sends `play_media`, and the picker closes.
-Timeout closes it without starting anything. Sonos favourites use e.g. `SQ:10`
+No configured entries means immediate now-playing controls. Otherwise entry
+opens the picker. Rotation selects an entry and a short knob press sends
+`play_media`, then closes the picker. A long knob hold during music reopens
+it at the last highlighted index; another long hold cancels. The index is
+session-local, never written to flash, and starts at zero on fresh launch.
+Opening and rotation restart `picker_ms`; metadata updates do not alter the
+deadline. Cancel/timeout close it without changing playback. Opening clears
+only `osd_until`, preserving the independent stale-volume settling window.
+Volume buttons remain usable in the picker; subsequent volume feedback keeps
+its normal two-second priority. Sonos favourites use e.g. `SQ:10`
 with `favorite_item_id`; Spotify URIs use `spotify:playlist:ID` and `playlist`.
 The receiving Sonos integration decides content support; no Spotify credentials
 are required by this protocol.

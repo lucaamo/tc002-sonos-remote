@@ -10,7 +10,7 @@ repository. No firmware was flashed or reset for these checks.
 | --- | --- |
 | Source/privacy/contract tests | unittest suite; private defaults absent |
 | Blueprint protocol validation | 30 fixtures locally; 29 JSON-serializable fixtures rendered in actual HA, all passed |
-| Actual Berry execution | 54 functional assertions plus native exit-payload assertions in temporary headless probe, passed |
+| Actual Berry execution | 77 assertions, including native exit payloads, in temporary headless probe, passed for 3.1.0 |
 | Fresh namespace | New app/module identities, empty playlists/artist rules and entity/prefix defaults |
 | Independent HA backend | Different Sonos entity, unique MQTT root; existing add-on does not own this root |
 | Native registration/launch | API reports ondemand=true; app starts and draws 52×16 text |
@@ -46,12 +46,14 @@ AWTRIX_TEST_URL=http://AWTRIX_IP python3 -m unittest tests.test_artist_runtime -
 
 This uploads an isolated module and a headless probe, then removes them in
 `finally`. It executes the actual app class using local clock, rendering,
-settings, MQTT and rotation fakes. Fifty-four functional assertions cover artist parsing,
-first-pass completion, centring and group scrolling; native short/long release,
+settings, MQTT and rotation fakes. Seventy-seven assertions cover artist parsing,
+first-pass completion, centring and group scrolling; native select suppression,
 button repeat, duplicate MQTT suppression, rotary direction and picker;
 optimistic volume and stale echoes; malformed/valid artwork; offline recovery
-and hide cleanup. The expanded 54 functional assertions also cover the exact
-knob-hold boundary, non-retained native exit, duplicate/late input suppression,
+and hide cleanup. Picker checks cover the exact knob-hold boundary, empty-list
+no-op, four-entry wrap, confirmation, cancel, remembered selection, timeout,
+metadata updates and volume-overlay dismissal without losing stale-volume
+protection. Exit checks cover non-retained native exit, duplicate/late input suppression,
 bounded retry after a lost command, and reuse after hide. The rotation fake
 raises if the unsafe Berry exit path is used. No real media commands are sent
 by the harness.
@@ -68,15 +70,23 @@ python3 tools/smoke_ondemand.py --url http://AWTRIX_IP \
 ```
 
 The helper refuses to replace existing test names, installs temporary app/module
-identities with neutral defaults and verifies twelve lifecycle/frame/metadata
-checks. It sends only refresh media commands. Timers inject a long knob
-press/release into the production handler; its actual native MQTT command must
-unload the app. This catches the Berry exit-path defect that an HTTP-only exit
-test missed. The helper removes its scripts in `finally`. It does not reset or replace the
+identities with neutral defaults and verifies eighteen lifecycle/frame/metadata
+checks. It sends only refresh media commands. Timers inject knob holds and a
+turn into the production handler, checking picker open, selection, cancellation,
+reopening and timeout on the real display. Two synthetic playlists exist only
+in test RAM and are never confirmed. It then calls the production `exit_mode()`;
+its actual native MQTT command must unload the app. This catches the Berry
+exit-path defect that an HTTP-only exit test missed. The helper removes its
+scripts in `finally`. It does not reset or replace the
 production controller. It bounds the dwell test to 50 seconds. Remove the
 separately created test automation and its retained state topics afterward.
-The revised helper passed all twelve checks on the available TC002 after the
-v3.0.1 fix, including exit through the production hold handler and native MQTT.
+The earlier v3.0.1 helper passed twelve checks, including exit through the then
+app-exit knob handler. In 3.1.0 that gesture is intentionally playlist selection.
+The revised helper passed all eighteen checks on the same TC002 with 3.1.0.
+Its timer chain uses one pending timer at a time and rejects any non-refresh
+media command before publication, including an accidental short press caused
+by timer scheduling. This bounds test side effects without replacing the
+production input handlers or native exit path.
 
 ## Physical trial and exit correction in v3.0.1
 
@@ -94,6 +104,17 @@ The user also confirmed native top-select-hold exit back to the carousel.
 These user confirmations concern the installed private playlist settings;
 public source keeps empty playlists and neutral player/prefix defaults.
 
+## Playlist gesture changes in v3.1.0
+
+The knob now owns playback and playlist selection; long top select remains the
+local physical exit. Short top select causes no media action. The actual Berry
+harness passed 77 checks. After installing 3.1.0 the user confirmed physical
+hold-to-open, rotary browsing and another hold cancelling back to music without
+launching the highlighted playlist. This is a new acceptance result, separate
+from the earlier 3.0.1 hold-to-exit confirmation.
+The 3.1.0 upgrade preserved all twelve configured values and the personal
+artist-name module; source readback matched the published candidate exactly.
+
 ## Remaining physical acceptance
 
 These checks still require a person at the device; automated handler execution
@@ -102,11 +123,14 @@ is not proof of physical electrical/input timing:
 1. Repeat entry from each carousel page using top select → Scripts → Sonos
    Remote; menu entry has passed on the available TC002. Confirm the launching
    gesture does not start music.
-2. Browse at least two configured playlists, confirm one with knob/select, then
+2. Browse at least two configured playlists, confirm one with the knob, then
    test play/pause and next/previous on the actual Sonos queue.
 3. Press/hold top left/right; confirm Sonos changes and TC002 local speaker
    volume stays unchanged. Confirm the OSD lasts two seconds after the last press.
-4. Repeat entry/exit cycles; real active-session knob hold now restores the carousel.
+4. During music hold/release the knob to reopen playlists; rotate and confirm.
+   Repeat a hold in the picker to cancel, then verify its inactivity timeout.
+   Neither cancel nor timeout may change playback. Exit with top select hold
+   and repeat entry/exit cycles.
 5. Test MQTT disconnect/reconnect, unavailable Sonos and HA restart. Local
    top-select exit must work without MQTT. After 65 seconds without HA state
    the app requests exit; broker loss delays the MQTT exit until reconnection.

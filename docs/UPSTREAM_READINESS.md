@@ -1,6 +1,6 @@
 # Official-framework contribution readiness
 
-Version 3.0.1 supplies a reusable on-demand Berry app and a standalone Home
+Version 3.1.0 supplies a reusable on-demand Berry app and a standalone Home
 Assistant blueprint. All entity choices, clock prefixes, playlist entries and
 artist aliases are settings. Source defaults contain no author's devices,
 credentials, playlist ids or private backups.
@@ -32,6 +32,8 @@ Native select-hold still exits without the broker. Inactive on-demand scripts
 are unloaded. During physical testing, Berry `rotation.next()` reopened the
 on-demand app on beta 1.1.5; native HTTP/MQTT next unloaded it correctly. The
 app now uses the non-retained native MQTT command and tests its actual path.
+In 3.1.0 the knob hold opens/cancels playlist selection; top-select hold is
+the sole physical exit gesture. The MQTT exit path remains for backend loss.
 
 Native entry is firmware menu → Scripts → Sonos Remote, from any carousel
 page, or the web UI's Start action. The previous direct global knob hold is

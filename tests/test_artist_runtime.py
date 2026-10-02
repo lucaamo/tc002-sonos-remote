@@ -66,7 +66,12 @@ class ArtistRuntimeTests(unittest.TestCase):
                 self.assertIsNone(apps["sonos_artist_regression"].get("error"))
                 checks = [item for item in request("GET", "scripts/shared")
                           if item.get("owner") == "sonos_artist_regression"]
-                if any(item.get("value") == "54 runtime checks passed" for item in checks):
+                counts = [int(match[1]) for item in checks
+                          if isinstance(item.get("value"), str)
+                          and (match := re.fullmatch(r"(\d+) runtime checks passed", item["value"]))]
+                if counts:
+                    self.assertGreaterEqual(max(counts), 75, "runtime coverage unexpectedly decreased")
+                    print(f"Berry runtime: {max(counts)} checks passed")
                     break
                 time.sleep(0.1)
             else:

@@ -1,6 +1,6 @@
 # Sonos Remote for AWTRIX NG on Ulanzi TC002
 
-A reusable Berry controller for one Home Assistant Sonos player. Version 3.0.1
+A reusable Berry controller for one Home Assistant Sonos player. Version 3.1.0
 uses AWTRIX NG's official **on-demand** framework and a Home Assistant blueprint.
 No TC002 AWTRIX Bridge add-on, private firmware patch, Home Assistant token on
 the clock, or author's network configuration is required.
@@ -19,13 +19,21 @@ The web UI's **Start** button also launches it.
 
 | While Sonos Remote is running | Action |
 | --- | --- |
-| Rotate the knob in the initial picker | Choose one of four configured playlists/favourites |
-| Short knob press or short top select press | Start the highlighted item; otherwise play/pause |
+| Rotate the knob in the playlist picker | Choose one of four configured playlists/favourites |
+| Short knob press | Start the highlighted item; otherwise play/pause |
 | Rotate clockwise / counter-clockwise after picker | Next / previous track |
 | Top right / left button | Increase / decrease Sonos volume |
 | Hold a volume button | Repeat volume changes |
 | Hold top select for one second | Firmware exits and restores the carousel |
-| Hold knob for configured exit duration, then release | App exits and restores the carousel |
+| Hold knob for configured duration, then release | Open the playlist picker; repeat to cancel and return to music |
+| Short top select press | No music action; this button is reserved for firmware exit |
+
+The picker opens on entry when playlists are configured. During playback, a
+knob hold reopens it at the last highlighted item in this session. Confirmation
+starts that item and returns to now playing. Cancel or timeout (eight seconds
+by default) returns to music without changing playback. With no configured
+playlists, a knob hold has no effect. Opening the picker dismisses an existing
+volume overlay so the choice is immediately visible.
 
 **Entry by holding the knob from anywhere is not part of this native adapter.**
 The beta routes the three top buttons to scripts locally; it exposes knob events
@@ -34,10 +42,10 @@ session. It uses `blockNavigation` then to suppress the clock's local
 brightness/volume panel. Sonos volume and the TC002 speaker remain separate.
 No hidden global listener or firmware constant is required.
 
-On beta 1.1.5 the knob exit uses the clock's native MQTT `cmd/apps/next`
-command. `rotation.next()` inside this on-demand app reopened it during the
-physical trial. Knob exit therefore needs the broker connection; the firmware's
-top-select hold is the local exit when MQTT is unavailable.
+Top-select hold exits locally even when MQTT is unavailable. The backend-loss
+failsafe uses the clock's native MQTT `cmd/apps/next` command on beta 1.1.5:
+`rotation.next()` inside this on-demand app reopened it during the physical
+trial. The knob controls music and playlists; it no longer exits the app.
 
 The old global MQTT entry prototype is preserved in
 [`compatibility/sonos_remote_mqtt_v2.ax`](compatibility/sonos_remote_mqtt_v2.ax).
@@ -98,10 +106,10 @@ Configure the app using its gear on **Apps**:
 | Setting | Meaning |
 | --- | --- |
 | MQTT topic root | Match the blueprint's root; configurable independently per clock |
-| AWTRIX MQTT topic prefix | Copy System → MQTT → Topic prefix; used for knob input and native exit |
+| AWTRIX MQTT topic prefix | Copy System → MQTT → Topic prefix; used for knob input and backend-loss exit |
 | Sonos player entity | Exactly the entity selected in the blueprint |
 | Volume step (%) | 1–25 percentage points per button press |
-| Knob exit hold (ms) | Active-session knob exit; does not change firmware select/menu timing |
+| Playlist picker hold (ms) | Knob hold threshold to open/cancel the picker; does not change firmware select/menu timing |
 | Playlist picker timeout (ms) | Picker closes without playing if no choice is made |
 | Playlist 1–4 | `Name\|content id\|content type`, empty by default |
 | Music Meter icon name | Optional local fallback asset |
@@ -117,6 +125,8 @@ Relax|spotify:playlist:PLAYLIST_ID|playlist
 Names are personal settings; no Spotify login or author's playlist ids are
 needed by this app. Check the content id/type with HA's action tester first.
 Saving settings ends an active on-demand session; start it again from the menu.
+Upgrading from 3.0.1 preserves the `long_ms` setting but changes its function
+from app exit to playlist selection. The twelve existing config keys are unchanged.
 
 ## Display and artist rules
 
