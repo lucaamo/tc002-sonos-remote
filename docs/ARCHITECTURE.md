@@ -149,8 +149,10 @@ Unconfigured groups or oversized aliases continue scrolling. Duplicate artist
 reports do not reset the completed pass. A changed artist/session toggles the
 700/701 ms scroll hold option because the firmware's scroll bank keys state by
 geometry/options, not text identity. The name module parses four bounded,
-neutral rule lists and final overrides; old internal keys are retained only to
-preserve previously saved settings. No artist or playlist catalogue is required.
+one global rule list and optional global overrides, both empty by default.
+Module 2.0.0 reads `rules` then `overrides`; it has no playlist-specific keys.
+A `*` override cancels any abbreviation for that artist. No artist or playlist
+catalogue is required. Migrating 1.x settings is explicit, documented in the README.
 
 Artwork payloads contain width=16, height=16, and exactly 256 integer RGB888
 pixels (0..0xFFFFFF). Malformed JSON and invalid pixels are caught and rejected.

@@ -29,9 +29,10 @@ def exercise()
   check(sonos_artist_names.names.find("DUPLICATE ARTIST") == "LAST", "last duplicate wins")
   check(sonos_artist_names.names.find("INVALID") == nil, "invalid rule ignored")
   check(sonos_artist_names.names.find("EMPTY ARTIST") == nil, "blank alias ignored")
-  check(sonos_artist_names.names.find("PLAYLIST ARTIST") == "NINETIES", "playlist lists merged in order")
-  check(sonos_artist_names.names.find("HITS ARTIST") == "HITS", "independent playlist list loaded")
-  check(sonos_artist_names.names.find("VASCO ROSSI") == "VASCO", "personal override wins over playlist")
+  check(sonos_artist_names.names.find("GLOBAL ARTIST") == "GLOBAL", "global rules loaded")
+  check(sonos_artist_names.names.find("CATALOGUE ARTIST 0") == "C0", "global catalogue first entry")
+  check(sonos_artist_names.names.find("CATALOGUE ARTIST 399") == "C399", "global catalogue beyond old per-list limit")
+  check(sonos_artist_names.names.find("VASCO ROSSI") == "VASCO", "global override wins")
   var names = sonos_artist_names.names
   var sonos_artist_names = module("test_names")
   sonos_artist_names.names = {"VASCO ROSSI":names.find("VASCO ROSSI"), "NATALIE IMBRUGLIA":names.find("NATALIE IMBRUGLIA"), "ARTISTA LUNGO":"NOME TROPPO LUNGO", "STING":"ST"}

@@ -1,19 +1,16 @@
 # @module sonos_artist_names
 # @name Sonos Artist Names
-# @desc Optional artist aliases after one complete scroll in Sonos Remote
-# @version 1.2
-# @config relax text "Artist rules 1" default="" maxlen=4096 help="Full name|Short name; separate with ;. Use * to keep the complete name scrolling."
-# @config estate text "Artist rules 2" default="" maxlen=4096 help="Full name|Short name; separate with ;. Use * to keep the complete name scrolling."
-# @config hits text "Artist rules 3" default="" maxlen=4096 help="Full name|Short name; separate with ;. Use * to keep the complete name scrolling."
-# @config nineties text "Artist rules 4" default="" maxlen=4096 help="Full name|Short name; separate with ;. Use * to keep the complete name scrolling."
-# @config aliases text "Artist rule overrides" default="" maxlen=2048 help="Full name|Short name; these rules override all four lists."
+# @desc Optional global artist aliases, independent of playlists. Full names scroll by default.
+# @version 2.0.0
+# @config rules text "Global artist rules" default="" maxlen=16384 help="Optional, for every playlist and source. Full name|Short name; separate with ;. Empty keeps full names. Use * for continuous full-name scrolling."
+# @config overrides text "Global rule overrides" default="" maxlen=2048 help="Optional rules with priority over Global artist rules. Full name|Short name; separate with ;. Use * to keep a full name."
 
 import string
 
 var m = module("sonos_artist_names")
 m.names = {}
 # Read under the module identity; calling-app functions have a different store.
-for key : ["relax", "estate", "hits", "nineties", "aliases"]
+for key : ["rules", "overrides"]
   var spec = store.get(key)
   if spec != nil && spec != ""
     for entry : string.split(spec, ";")

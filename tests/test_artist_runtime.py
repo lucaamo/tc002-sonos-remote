@@ -16,12 +16,11 @@ def build_runtime_probe() -> tuple[str, str, str]:
     module = (ROOT / "apps/sonos_artist_names.ax").read_text(encoding="utf-8")
     module = module.replace("sonos_artist_names", "sonos_artist_test_names")
     fixtures = {
-        "aliases": " Vasco Rossi | Vasco ; Natalie Imbruglia | Natalie ;Backstreet Boys|*;"
+        "overrides": " Vasco Rossi | Vasco ; Natalie Imbruglia | Natalie ;Backstreet Boys|*;"
                    "invalid;Empty Artist|   ;Duplicate Artist|First;Duplicate Artist|Last",
-        "relax": "Playlist Artist|Relax;Vasco Rossi|Other",
-        "estate": "Playlist Artist|Estate",
-        "hits": "Hits Artist|Hits",
-        "nineties": "Playlist Artist|Nineties",
+        "rules": "Global Artist|Global;Vasco Rossi|Other;Backstreet Boys|Wrong;"
+                 "Duplicate Artist|Original;" + ";".join(
+                     f"Catalogue Artist {n}|C{n}" for n in range(400)),
     }
     for key, value in fixtures.items():
         module, count = re.subn(
@@ -82,7 +81,7 @@ class ArtistRuntimeTests(unittest.TestCase):
                           if isinstance(item.get("value"), str)
                           and (match := re.fullmatch(r"(\d+) runtime checks passed", item["value"]))]
                 if counts:
-                    self.assertGreaterEqual(max(counts), 88, "runtime coverage unexpectedly decreased")
+                    self.assertGreaterEqual(max(counts), 89, "runtime coverage unexpectedly decreased")
                     print(f"Berry runtime: {max(counts)} checks passed")
                     break
                 time.sleep(0.1)

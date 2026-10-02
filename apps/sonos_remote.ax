@@ -1,6 +1,6 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 3.2.0
+# @version 3.2.1
 # @ondemand
 # @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the Home Assistant blueprint MQTT root"
 # @config device_root text "AWTRIX MQTT topic prefix" default="" maxlen=96 help="Copy System > MQTT > Topic prefix from your TC002"

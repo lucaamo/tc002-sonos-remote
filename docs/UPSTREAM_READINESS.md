@@ -1,6 +1,6 @@
 # Official-framework contribution readiness
 
-Version 3.2.0 supplies a reusable on-demand Berry app and a standalone Home
+Version 3.2.1 supplies a reusable on-demand Berry app and a standalone Home
 Assistant blueprint. All entity choices, clock prefixes, playlist entries and
 artist aliases are settings. Source defaults contain no author's devices,
 credentials, playlist ids or private backups.

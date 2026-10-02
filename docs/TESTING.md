@@ -10,7 +10,7 @@ repository. No firmware was flashed or reset for these checks.
 | --- | --- |
 | Source/privacy/contract tests | unittest suite; private defaults absent |
 | Blueprint protocol validation | 30 fixtures locally; 29 JSON-serializable fixtures rendered in actual HA, all passed |
-| Actual Berry execution | 88 assertions, including ten-slot selection and native exit payloads, in temporary headless probe, passed for 3.2.0 |
+| Actual Berry execution | 89 assertions, including global artist rules with a 400-entry catalogue, priority overrides, ten-slot selection and native exit payloads, in temporary headless probe, passed for 3.2.1 |
 | Fresh namespace | New app/module identities, empty playlists/artist rules and entity/prefix defaults |
 | Independent HA backend | Different Sonos entity, unique MQTT root; existing add-on does not own this root |
 | Native registration/launch | API reports ondemand=true; app starts and draws 52×16 text |
@@ -46,14 +46,16 @@ AWTRIX_TEST_URL=http://AWTRIX_IP python3 -m unittest tests.test_artist_runtime -
 
 This uploads an isolated module and a headless probe, then removes them in
 `finally`. It executes the actual app class using local clock, rendering,
-settings, MQTT and rotation fakes. Eighty-eight assertions cover artist parsing,
+settings, MQTT and rotation fakes. Eighty-nine assertions cover artist parsing,
 first-pass completion, centring and group scrolling; native select suppression,
 button repeat, duplicate MQTT suppression, rotary direction and picker;
 optimistic volume and stale echoes; malformed/valid artwork; offline recovery
 and hide cleanup. Picker checks cover the exact knob-hold boundary, empty-list
 no-op, four-entry and ten-entry wrap, confirmation, cancel, remembered selection, timeout,
 metadata updates and volume-overlay dismissal without losing stale-volume
-protection. The real playlist module loads all ten settings; the production
+protection. The actual artist module loads one global catalogue exceeding the
+old 4,096-character per-list limit, checks its first/last entry and priority
+overrides, including keeping a band name whole. The real playlist module loads all ten settings; the production
 class confirms the tenth item, handles large positive/negative turns and skips
 blank/malformed entries without losing later slots. Exit checks cover
 non-retained native exit, duplicate/late input suppression,

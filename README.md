@@ -1,6 +1,6 @@
 # Sonos Remote for AWTRIX NG on Ulanzi TC002
 
-A reusable Berry controller for one Home Assistant Sonos player. Version 3.2.0
+A reusable Berry controller for one Home Assistant Sonos player. Version 3.2.1
 uses AWTRIX NG's official **on-demand** framework and a Home Assistant blueprint.
 No TC002 AWTRIX Bridge add-on, private firmware patch, Home Assistant token on
 the clock, or author's network configuration is required.
@@ -141,7 +141,8 @@ app**, install `sonos_playlists` and copy the four old `playlist1`–`playlist4`
 values into its corresponding fields. Leave slots 5–10 empty until needed.
 Then update `sonos_remote`. The playlist keys now belong to the module; the
 eight other app keys retain their names. Verify the four entries and your
-player/root/volume settings after saving. The artist module needs no update.
+player/root/volume settings after saving. Upgrading the artist module to 2.0.0
+also requires the separate rule migration described below.
 
 Upgrading from 3.0.1 also preserves the `long_ms` value but changes its function
 from app exit to playlist selection, as introduced in 3.1.0.
@@ -153,18 +154,33 @@ Artist and title are white, centred in the 35 columns to the right of the
 artists, an explicitly configured short name remains centred after one full
 pass; unconfigured names and groups keep scrolling in full.
 
-In **Modules → Sonos Artist Names → settings**, the four empty rule lists and
-final overrides accept entries such as:
+In **Modules → Sonos Artist Names → settings**, **Global artist rules** is one
+optional list for every playlist, favourite and music source. It is empty on a
+new installation: full names keep scrolling, without guessing which word is a
+first name, surname or band name. Add only the abbreviations you want, such as:
 
 ```text
 Vasco Rossi|Vasco;Natalie Imbruglia|Natalie;Backstreet Boys|*
 ```
 
 `*` means continuous full-name scrolling. Matching trims spaces and ignores
-ASCII case; last duplicate wins, overrides are applied last. A short name that
-does not fit never replaces the full name. Rules are user-curated settings,
-not a live Spotify artist catalogue. Existing module keys are retained for
-upgrade compatibility; none requires particular playlists.
+ASCII case; last duplicate wins. **Global rule overrides** is an optional
+second field whose entries have priority over the main list; `Backstreet Boys|*`
+there also cancels an abbreviation from the main list. A short name that does
+not fit never replaces the full name. Rules apply to the artist, independently
+of the selected playlist. They are user-curated settings, not a live Spotify
+artist catalogue. The main list accepts up to 16,384 characters and overrides
+up to 2,048 on the tested TC002 beta.
+
+### Upgrade the artist module from 1.x to 2.0.0
+
+Back up the module source and settings **before replacing it**. Copy the four
+old rule fields (`relax`, `estate`, `hits`, `nineties`, or Artist rules 1–4)
+into **Global artist rules**, in that order, separating the lists with `;`.
+Copy the old `aliases` / override field into **Global rule overrides**. Install
+the new module, save both fields, and start Sonos Remote again. Empty fields
+intentionally mean no abbreviations. Old keys are not read by version 2.0.0;
+upgrading the source alone does not migrate saved rules automatically.
 
 Every volume press restarts a two-second `SONOS` / `xx%` overlay. A three-second
 settling window suppresses stale HA volume reports, including reports arriving

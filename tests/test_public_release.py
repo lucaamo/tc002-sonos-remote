@@ -17,7 +17,7 @@ PATCH = (ROOT / "patches" / "tc002-v1.1.2-tc002.1-global-sonos-shortcut.patch").
 
 class PublicReleaseTests(unittest.TestCase):
     def test_berry_contract(self) -> None:
-        self.assertIn("# @version 3.2.0", APP)
+        self.assertIn("# @version 3.2.1", APP)
         self.assertIn('default="tc002/sonos_remote/v2"', APP)
         self.assertIn('"player_entity_id":self.player', APP)
         self.assertIn('"action":"play_media"', APP)
@@ -33,9 +33,11 @@ class PublicReleaseTests(unittest.TestCase):
         self.assertIn('if self.device_root != ""', APP)
         module = (ROOT / "apps/sonos_artist_names.ax").read_text(encoding="utf-8")
         defaults = re.findall(r'^# @config \w+ text "[^"]+" default="([^"]*)"', module, re.M)
-        self.assertEqual(defaults, [""] * 5)
-        for slot in range(1, 5):
-            self.assertIn(f'"Artist rules {slot}"', module)
+        self.assertEqual(defaults, [""] * 2)
+        self.assertIn('# @config rules text "Global artist rules"', module)
+        self.assertIn('# @config overrides text "Global rule overrides"', module)
+        for key in ("relax", "estate", "hits", "nineties", "aliases"):
+            self.assertNotRegex(module, rf"# @config {key} ")
 
     def test_exclusive_input_mapping(self) -> None:
         self.assertIn("# @ondemand", APP)
