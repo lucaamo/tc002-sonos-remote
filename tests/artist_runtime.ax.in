@@ -6,6 +6,7 @@ import json
 import string
 import sonos_artist_test_names
 var sonos_artist_names = sonos_artist_test_names
+import sonos_playlist_test_slots
 
 # Run the actual production class with lexical, app-local fakes. No MQTT
 # subscriptions, commands, navigation or speaker settings reach real hardware.
@@ -16,6 +17,12 @@ def check(condition, message)
 end
 
 def exercise()
+  check(size(sonos_playlist_test_slots.entries)==10, "module loads ten configured slots")
+  check(sonos_playlist_test_slots.entries[0]=="List 1|spotify:playlist:EXAMPLE_1|playlist", "module keeps first slot")
+  check(sonos_playlist_test_slots.entries[9]=="List 10|spotify:playlist:EXAMPLE_10|playlist", "module keeps tenth slot in numeric order")
+  var configured_entries = sonos_playlist_test_slots.entries
+  var sonos_playlists = module("test_playlists")
+  sonos_playlists.entries = []
   check(sonos_artist_names.names.find("VASCO ROSSI") == "VASCO", "module alias parsing")
   check(sonos_artist_names.names.find("NATALIE IMBRUGLIA") == "NATALIE", "second module alias")
   check(sonos_artist_names.names.find("BACKSTREET BOYS") == "", "explicit continuous rule")
@@ -274,6 +281,33 @@ __CLASS__
   check(app.pressed_at==-1, "inactive knob press is ignored")
   app.on_control("test_clock/event/knob", "{\"turn\":1}")
   check(size(commands)==0, "inactive app never handles rotary")
+  sonos_playlists.entries = configured_entries
+  var expanded = SonosRemote()
+  check(size(expanded.playlists)==10, "production init parses all ten module entries")
+  expanded.player = "media_player.example"
+  expanded.device_root = "test_clock"
+  expanded.enter_mode()
+  commands.clear()
+  expanded.on_control("test_clock/event/knob", "{\"turn\":-1}")
+  check(expanded.playlist_index==9 && size(commands)==0, "ten-slot picker wraps first to tenth")
+  calls.clear()
+  expanded.draw()
+  check(calls[-1]["value"]=="List 10", "tenth playlist name renders")
+  expanded.on_control("test_clock/state/buttons/knob", "1")
+  clock += 100
+  expanded.on_control("test_clock/state/buttons/knob", "0")
+  check(!expanded.picker && commands[-1]["media_content_id"]=="spotify:playlist:EXAMPLE_10", "tenth playlist confirmation selects correct content")
+  expanded.open_picker()
+  expanded.on_control("test_clock/event/knob", "{\"turn\":1}")
+  check(expanded.playlist_index==0, "ten-slot picker wraps tenth to first")
+  expanded.on_control("test_clock/event/knob", "{\"turn\":21}")
+  check(expanded.playlist_index==1, "multi-turn events wrap over ten entries")
+  expanded.on_control("test_clock/event/knob", "{\"turn\":-22}")
+  check(expanded.playlist_index==9, "negative multi-turn events wrap over ten entries")
+  sonos_playlists.entries = [configured_entries[0], "", "invalid", configured_entries[9]]
+  var sparse = SonosRemote()
+  check(size(sparse.playlists)==2 && sparse.playlists[1]["name"]=="List 10", "blank and invalid slots are skipped without losing tenth")
+  expanded.on_hide()
   shared.set("sonos_artist_regression", str(check_stats["count"])+" runtime checks passed")
 end
 

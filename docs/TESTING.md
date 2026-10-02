@@ -10,7 +10,7 @@ repository. No firmware was flashed or reset for these checks.
 | --- | --- |
 | Source/privacy/contract tests | unittest suite; private defaults absent |
 | Blueprint protocol validation | 30 fixtures locally; 29 JSON-serializable fixtures rendered in actual HA, all passed |
-| Actual Berry execution | 77 assertions, including native exit payloads, in temporary headless probe, passed for 3.1.0 |
+| Actual Berry execution | 88 assertions, including ten-slot selection and native exit payloads, in temporary headless probe, passed for 3.2.0 |
 | Fresh namespace | New app/module identities, empty playlists/artist rules and entity/prefix defaults |
 | Independent HA backend | Different Sonos entity, unique MQTT root; existing add-on does not own this root |
 | Native registration/launch | API reports ondemand=true; app starts and draws 52×16 text |
@@ -46,14 +46,17 @@ AWTRIX_TEST_URL=http://AWTRIX_IP python3 -m unittest tests.test_artist_runtime -
 
 This uploads an isolated module and a headless probe, then removes them in
 `finally`. It executes the actual app class using local clock, rendering,
-settings, MQTT and rotation fakes. Seventy-seven assertions cover artist parsing,
+settings, MQTT and rotation fakes. Eighty-eight assertions cover artist parsing,
 first-pass completion, centring and group scrolling; native select suppression,
 button repeat, duplicate MQTT suppression, rotary direction and picker;
 optimistic volume and stale echoes; malformed/valid artwork; offline recovery
 and hide cleanup. Picker checks cover the exact knob-hold boundary, empty-list
-no-op, four-entry wrap, confirmation, cancel, remembered selection, timeout,
+no-op, four-entry and ten-entry wrap, confirmation, cancel, remembered selection, timeout,
 metadata updates and volume-overlay dismissal without losing stale-volume
-protection. Exit checks cover non-retained native exit, duplicate/late input suppression,
+protection. The real playlist module loads all ten settings; the production
+class confirms the tenth item, handles large positive/negative turns and skips
+blank/malformed entries without losing later slots. Exit checks cover
+non-retained native exit, duplicate/late input suppression,
 bounded retry after a lost command, and reuse after hide. The rotation fake
 raises if the unsafe Berry exit path is used. No real media commands are sent
 by the harness.
@@ -70,11 +73,12 @@ python3 tools/smoke_ondemand.py --url http://AWTRIX_IP \
 ```
 
 The helper refuses to replace existing test names, installs temporary app/module
-identities with neutral defaults and verifies eighteen lifecycle/frame/metadata
+identities with neutral defaults and verifies twenty lifecycle/frame/metadata
 checks. It sends only refresh media commands. Timers inject knob holds and a
 turn into the production handler, checking picker open, selection, cancellation,
-reopening and timeout on the real display. Two synthetic playlists exist only
-in test RAM and are never confirmed. It then calls the production `exit_mode()`;
+reopening and timeout on the real display. The temporary playlist module has
+ten synthetic entries, exercises browsing to the tenth and is never confirmed.
+It then calls the production `exit_mode()`;
 its actual native MQTT command must unload the app. This catches the Berry
 exit-path defect that an HTTP-only exit test missed. The helper removes its
 scripts in `finally`. It does not reset or replace the
@@ -114,6 +118,22 @@ launching the highlighted playlist. This is a new acceptance result, separate
 from the earlier 3.0.1 hold-to-exit confirmation.
 The 3.1.0 upgrade preserved all twelve configured values and the personal
 artist-name module; source readback matched the published candidate exactly.
+
+## Ten playlist slots in v3.2.0
+
+The app imports a separate Sonos Playlists module with ten configurable fields,
+within the firmware's twelve-field-per-script limit. The actual Berry harness
+passed 88 checks and the fresh-config display helper passed twenty checks,
+including loading ten module values and browsing to the tenth item. The
+temporary entries were never played; probes and their settings were removed.
+
+On the production upgrade, all four existing playlist strings were transferred
+unchanged from the app to module slots 1–4; slots 5–10 remain empty. All eight
+other app values and the personal artist module were preserved. Both app and
+module source readbacks matched the candidate files. The previous 3.1.0 source
+and twelve-field configuration are saved privately for rollback. No firmware
+or HA automation changes were required. Physical controls are unchanged from
+3.1.0; tenth-item selection has automated rather than human acceptance.
 
 ## Remaining physical acceptance
 

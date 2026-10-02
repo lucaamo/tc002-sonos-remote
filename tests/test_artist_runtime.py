@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def build_runtime_probe() -> tuple[str, str]:
+def build_runtime_probe() -> tuple[str, str, str]:
     app = (ROOT / "apps/sonos_remote.ax").read_text(encoding="utf-8")
     module = (ROOT / "apps/sonos_artist_names.ax").read_text(encoding="utf-8")
     module = module.replace("sonos_artist_names", "sonos_artist_test_names")
@@ -30,13 +30,22 @@ def build_runtime_probe() -> tuple[str, str]:
         )
         if count != 1:
             raise ValueError(f"Missing or duplicated module setting: {key}")
+    playlists = (ROOT / "apps/sonos_playlists.ax").read_text(encoding="utf-8").replace(
+        "sonos_playlists", "sonos_playlist_test_slots")
+    for slot in range(1, 11):
+        playlists, count = re.subn(
+            rf'(# @config playlist{slot} text "[^"]+" default=)"[^"]*"',
+            lambda match: match[1] + f'"List {slot}|spotify:playlist:EXAMPLE_{slot}|playlist"', playlists,
+        )
+        if count != 1:
+            raise ValueError(f"Missing or duplicated playlist slot: {slot}")
     klass = app[app.index("class SonosRemote"):app.rindex("return SonosRemote()")].strip()
     configs = "\n".join(line for line in app.splitlines() if line.startswith("# @config "))
     harness = (ROOT / "tests/artist_runtime.ax.in").read_text(encoding="utf-8")
     harness = harness.replace("__CONFIG__", configs).replace(
         "__CLASS__", "\n".join("  " + line for line in klass.splitlines())
     )
-    return module, harness
+    return module, playlists, harness
 
 
 @unittest.skipUnless(os.environ.get("AWTRIX_TEST_URL"), "set AWTRIX_TEST_URL for Berry runtime checks")
@@ -53,10 +62,13 @@ class ArtistRuntimeTests(unittest.TestCase):
             with urllib.request.urlopen(req, timeout=15) as response:
                 return json.load(response)
 
-        module, harness = build_runtime_probe()
+        module, playlists, harness = build_runtime_probe()
         installed = []
+        names = {"sonos_artist_test_names", "sonos_playlist_test_slots", "sonos_artist_regression"}
+        if names & {a["name"] for a in request("GET", "apps")}:
+            self.fail("Runtime test names already exist; refusing to replace them")
         try:
-            for name, source in (("sonos_artist_test_names", module), ("sonos_artist_regression", harness)):
+            for name, source in (("sonos_artist_test_names", module), ("sonos_playlist_test_slots", playlists), ("sonos_artist_regression", harness)):
                 installed.append(name)
                 result = request("PUT", "apps/script/" + name, source)
                 self.assertIsNone(result.get("error"), result)
@@ -70,7 +82,7 @@ class ArtistRuntimeTests(unittest.TestCase):
                           if isinstance(item.get("value"), str)
                           and (match := re.fullmatch(r"(\d+) runtime checks passed", item["value"]))]
                 if counts:
-                    self.assertGreaterEqual(max(counts), 75, "runtime coverage unexpectedly decreased")
+                    self.assertGreaterEqual(max(counts), 88, "runtime coverage unexpectedly decreased")
                     print(f"Berry runtime: {max(counts)} checks passed")
                     break
                 time.sleep(0.1)

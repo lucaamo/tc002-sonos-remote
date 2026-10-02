@@ -1,0 +1,23 @@
+# @module sonos_playlists
+# @name Sonos Playlists
+# @desc Ten playlist or favourite slots for Sonos Remote
+# @version 1.0.0
+# @config playlist1 text "Playlist 1" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist2 text "Playlist 2" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist3 text "Playlist 3" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist4 text "Playlist 4" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist5 text "Playlist 5" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist6 text "Playlist 6" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist7 text "Playlist 7" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist8 text "Playlist 8" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist9 text "Playlist 9" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+# @config playlist10 text "Playlist 10" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"
+
+var m = module("sonos_playlists")
+m.entries = []
+# Module configuration belongs to its own store, not the importing app's.
+for slot : 1 .. 10
+  var spec = store.get("playlist" + str(slot))
+  if spec != nil && spec != "" m.entries.push(spec) end
+end
+return m

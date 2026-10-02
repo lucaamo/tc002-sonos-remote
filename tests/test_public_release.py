@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "apps" / "sonos_remote.ax").read_text(encoding="utf-8")
+PLAYLISTS = (ROOT / "apps" / "sonos_playlists.ax").read_text(encoding="utf-8")
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 LICENSE = (ROOT / "LICENSE.md").read_text(encoding="utf-8")
 PATCH = (ROOT / "patches" / "tc002-v1.1.2-tc002.1-global-sonos-shortcut.patch").read_text(
@@ -16,12 +17,14 @@ PATCH = (ROOT / "patches" / "tc002-v1.1.2-tc002.1-global-sonos-shortcut.patch").
 
 class PublicReleaseTests(unittest.TestCase):
     def test_berry_contract(self) -> None:
-        self.assertIn("# @version 3.1.0", APP)
+        self.assertIn("# @version 3.2.0", APP)
         self.assertIn('default="tc002/sonos_remote/v2"', APP)
         self.assertIn('"player_entity_id":self.player', APP)
         self.assertIn('"action":"play_media"', APP)
         self.assertNotIn('"/state/playlists"', APP)
-        self.assertEqual(APP.count("# @config "), 12)
+        self.assertEqual(APP.count("# @config "), 8)
+        self.assertEqual(PLAYLISTS.count("# @config "), 10)
+        self.assertIn("import sonos_playlists", APP)
         self.assertTrue(APP.rstrip().endswith("return SonosRemote()"))
 
     def test_new_install_has_no_personal_configuration(self) -> None:
@@ -45,9 +48,14 @@ class PublicReleaseTests(unittest.TestCase):
         self.assertIn('self.send("play_pause")', APP)
 
     def test_playlist_picker_contract(self) -> None:
-        for slot in range(1, 5):
-            self.assertIn(f'# @config playlist{slot} text "Playlist {slot}"', APP)
-            self.assertIn(f'store.get("playlist{slot}")', APP)
+        self.assertIn("# @module sonos_playlists", PLAYLISTS)
+        self.assertIn("for slot : 1 .. 10", PLAYLISTS)
+        self.assertIn('store.get("playlist" + str(slot))', PLAYLISTS)
+        defaults = re.findall(r'^# @config playlist\d+ text "[^"]+" default="([^"]*)"', PLAYLISTS, re.M)
+        self.assertEqual(defaults, [""] * 10)
+        for slot in range(1, 11):
+            self.assertIn(f'# @config playlist{slot} text "Playlist {slot}"', PLAYLISTS)
+        self.assertIn("for spec : sonos_playlists.entries self.add_playlist(spec) end", APP)
         self.assertIn('re.search("^([^|]+)\\\\|([^|]+)\\\\|([^|]+)$", spec)', APP)
         self.assertIn("self.playlist_index = (self.playlist_index + turns) % count", APP)
         self.assertIn('"media_content_id":content_id', APP)

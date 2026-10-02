@@ -10,12 +10,14 @@ flowchart LR
   B <-->|commands / retained state| A[Home Assistant blueprint]
   A --> S[Sonos integration]
   M[Artist-name settings module] --> B
+  P[Ten-playlist settings module] --> B
   O[Optional image converter] -->|16x16 RGB| B
 ```
 
 `apps/sonos_remote.ax` is an on-demand tool; the firmware loads it only when
 started and unloads it on exit. `apps/sonos_artist_names.ax` is an imported
-settings module. `home-assistant/sonos_remote.yaml` uses native HA automations,
+settings module; `apps/sonos_playlists.ax` owns ten ordered playlist settings.
+`home-assistant/sonos_remote.yaml` uses native HA automations,
 MQTT and Sonos integrations. The TC002 AWTRIX Bridge add-on is not a dependency.
 The code stores no HA token or broker password.
 
@@ -118,7 +120,11 @@ that drawing path. Do not run an old add-on and blueprint on the same root.
 
 ## Playlists and display
 
-Four Berry `Name|content id|content type` settings are parsed once on launch.
+Ten Berry `Name|content id|content type` settings belong to `sonos_playlists`.
+The module reads its own store at top level, traversing slots 1–10 in numeric
+order, and exports the nonempty specifications. `SonosRemote.init()` parses
+these into a session-local list. Blank/malformed entries do not create picker
+items; a sparse list including slot ten remains in its configured order.
 No configured entries means immediate now-playing controls. Otherwise entry
 opens the picker. Rotation selects an entry and a short knob press sends
 `play_media`, then closes the picker. A long knob hold during music reopens
@@ -169,8 +175,11 @@ Firmware stores and validates bounded `# @config` fields. Source defaults are
 neutral. Home Assistant blueprint selectors collect the Sonos entity and root;
 HA validates the automation schema, and runtime protocol validation checks
 incoming commands. Module/app saves restart dependent code; native lifecycle
-releases input ownership. The remote uses all 12 config slots, so extra optional
-settings may need a module or a revised UI schema.
+releases input ownership. The remote uses eight config slots and the playlist
+module ten, within the firmware's twelve-field limit per script. During a 3.1.0
+upgrade, read/back up the four old app playlist fields and save them in the new
+module before updating the app; verify all eight remaining app values afterward.
+Never read module settings through the importing app's `store` identity.
 
 ## Extend safely
 

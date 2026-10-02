@@ -1,6 +1,6 @@
 # Sonos Remote for AWTRIX NG on Ulanzi TC002
 
-A reusable Berry controller for one Home Assistant Sonos player. Version 3.1.0
+A reusable Berry controller for one Home Assistant Sonos player. Version 3.2.0
 uses AWTRIX NG's official **on-demand** framework and a Home Assistant blueprint.
 No TC002 AWTRIX Bridge add-on, private firmware patch, Home Assistant token on
 the clock, or author's network configuration is required.
@@ -19,7 +19,7 @@ The web UI's **Start** button also launches it.
 
 | While Sonos Remote is running | Action |
 | --- | --- |
-| Rotate the knob in the playlist picker | Choose one of four configured playlists/favourites |
+| Rotate the knob in the playlist picker | Choose one of up to ten configured playlists/favourites |
 | Short knob press | Start the highlighted item; otherwise play/pause |
 | Rotate clockwise / counter-clockwise after picker | Next / previous track |
 | Top right / left button | Increase / decrease Sonos volume |
@@ -87,9 +87,10 @@ without `?return_response`; no REST response request is needed.
 ## Install Berry
 
 In the clock web UI's **Scripts** tab, create `sonos_artist_names` and paste
-[the settings module](apps/sonos_artist_names.ax). Save it first. Then create
-`sonos_remote` and paste [the complete app](apps/sonos_remote.ax).
-Both compiler results must report `error: null`. Sonos Remote appears in
+[the artist settings module](apps/sonos_artist_names.ax). Create `sonos_playlists`
+and paste [the playlist settings module](apps/sonos_playlists.ax). Save both
+modules before creating `sonos_remote` with [the complete app](apps/sonos_remote.ax).
+All three compiler results must report `error: null`. Sonos Remote appears in
 **In the device menu**, not the ordinary rotation.
 
 HTTP installation:
@@ -97,6 +98,8 @@ HTTP installation:
 ```sh
 curl -fsS -X PUT "http://AWTRIX_IP/api/v1/apps/script/sonos_artist_names" \
   -H 'Content-Type: text/plain' --data-binary @apps/sonos_artist_names.ax
+curl -fsS -X PUT "http://AWTRIX_IP/api/v1/apps/script/sonos_playlists" \
+  -H 'Content-Type: text/plain' --data-binary @apps/sonos_playlists.ax
 curl -fsS -X PUT "http://AWTRIX_IP/api/v1/apps/script/sonos_remote" \
   -H 'Content-Type: text/plain' --data-binary @apps/sonos_remote.ax
 ```
@@ -111,9 +114,15 @@ Configure the app using its gear on **Apps**:
 | Volume step (%) | 1–25 percentage points per button press |
 | Playlist picker hold (ms) | Knob hold threshold to open/cancel the picker; does not change firmware select/menu timing |
 | Playlist picker timeout (ms) | Picker closes without playing if no choice is made |
-| Playlist 1–4 | `Name\|content id\|content type`, empty by default |
 | Music Meter icon name | Optional local fallback asset |
 | Music icon colour | Colour of the built-in animated fallback |
+
+Configure **Playlist 1–10** together in **Apps → Modules → Sonos Playlists →
+settings**. Each field is `Name|content id|content type`, empty by default.
+Empty or malformed entries are skipped; the picker follows numeric slot order
+and wraps between the last configured entry and the first. The module uses ten
+config fields and the app eight, within the firmware's twelve-field-per-script
+limit. No firmware change is needed.
 
 Playlist examples (enter literal `|` separators):
 
@@ -125,8 +134,17 @@ Relax|spotify:playlist:PLAYLIST_ID|playlist
 Names are personal settings; no Spotify login or author's playlist ids are
 needed by this app. Check the content id/type with HA's action tester first.
 Saving settings ends an active on-demand session; start it again from the menu.
-Upgrading from 3.0.1 preserves the `long_ms` setting but changes its function
-from app exit to playlist selection. The twelve existing config keys are unchanged.
+### Upgrade from 3.0.1 or 3.1.0
+
+Back up the old app source and configuration first. **Before replacing the
+app**, install `sonos_playlists` and copy the four old `playlist1`–`playlist4`
+values into its corresponding fields. Leave slots 5–10 empty until needed.
+Then update `sonos_remote`. The playlist keys now belong to the module; the
+eight other app keys retain their names. Verify the four entries and your
+player/root/volume settings after saving. The artist module needs no update.
+
+Upgrading from 3.0.1 also preserves the `long_ms` value but changes its function
+from app exit to playlist selection, as introduced in 3.1.0.
 
 ## Display and artist rules
 

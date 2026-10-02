@@ -1,6 +1,6 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 3.1.0
+# @version 3.2.0
 # @ondemand
 # @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the Home Assistant blueprint MQTT root"
 # @config device_root text "AWTRIX MQTT topic prefix" default="" maxlen=96 help="Copy System > MQTT > Topic prefix from your TC002"
@@ -8,16 +8,13 @@
 # @config step number "Volume step (%)" default=5 min=1 max=25
 # @config long_ms number "Playlist picker hold (ms)" default=1200 min=600 max=3000 help="Hold and release the knob to open or cancel playlist selection"
 # @config picker_ms number "Playlist picker timeout (ms)" default=8000 min=3000 max=30000 step=1000
-# @config playlist1 text "Playlist 1" default="" maxlen=768 help="Name|content id|content type"
-# @config playlist2 text "Playlist 2" default="" maxlen=768 help="Name|content id|content type"
-# @config playlist3 text "Playlist 3" default="" maxlen=768 help="Name|content id|content type"
-# @config playlist4 text "Playlist 4" default="" maxlen=768 help="Name|content id|content type"
 # @config icon_name text "Music Meter icon name" default="sonos_music_meter" maxlen=64
 # @config accent color "Music icon colour" default=#35DCC4
 
 import json
 import string
 import sonos_artist_names
+import sonos_playlists
 
 class SonosRemote
   var root, device_root, player, step, long_ms, picker_ms, icon_name, accent
@@ -56,10 +53,7 @@ class SonosRemote
     self.last_refresh = 0
     self.entered_at = 0
     self.playlists = []
-    self.add_playlist(store.get("playlist1"))
-    self.add_playlist(store.get("playlist2"))
-    self.add_playlist(store.get("playlist3"))
-    self.add_playlist(store.get("playlist4"))
+    for spec : sonos_playlists.entries self.add_playlist(spec) end
     self.picker = false
     self.playlist_index = 0
     self.picker_until = 0

@@ -19,12 +19,14 @@ def run(base, topic_root, player, device_root):
         with urllib.request.urlopen(req,timeout=15) as response:
             return json.load(response)
     module_name='sonos_clean_test_names'
+    playlist_name='sonos_clean_test_playlists'
     app_name='sonos_clean_test'
     existing={a['name'] for a in request('GET','apps')}
-    if {module_name,app_name} & existing:
+    if {module_name,playlist_name,app_name} & existing:
         raise RuntimeError('Test names already exist; refusing to replace them')
     module=(ROOT/'apps/sonos_artist_names.ax').read_text().replace('sonos_artist_names',module_name)
-    app=(ROOT/'apps/sonos_remote.ax').read_text().replace('sonos_artist_names',module_name)
+    playlists=(ROOT/'apps/sonos_playlists.ax').read_text().replace('sonos_playlists',playlist_name)
+    app=(ROOT/'apps/sonos_remote.ax').read_text().replace('sonos_artist_names',module_name).replace('sonos_playlists',playlist_name)
     # Fail before publishing if timing jitter or a physical input would send
     # an unexpected music command. Smoke tests may publish only refresh.
     app=app.replace('  def send(action)\n', '  def send(action)\n    if action != "refresh" raise "test_failed", "unexpected media command: " + action end\n')
@@ -45,8 +47,8 @@ def run(base, topic_root, player, device_root):
     # Chain a single timer: firmware permits only eight pending timers per app.
     app=app.replace('    self.enter_mode()\n  end\n\n  def enter_mode()',
         '    self.enter_mode()\n'
-        '    self.add_playlist("Test one|spotify:playlist:EXAMPLE_ONE|playlist")\n'
-        '    self.add_playlist("Test two|SQ:10|favorite_item_id")\n'
+        '    if size(self.playlists) != 10 raise "test_failed", "ten playlist settings not loaded" end\n'
+        '    self.close_picker()\n'
         f'    timer.after({opened-hold}, / -> self.smoke_step(0))\n'
         '  end\n\n  def enter_mode()')
     app=app.replace('  def enter_mode()', f'''  def smoke_step(stage)
@@ -60,7 +62,7 @@ def run(base, topic_root, player, device_root):
       self.smoke_stage("opened")
       delay = 300
     elif stage == 2
-      self.on_control(self.device_root + "/event/knob", "{{\\"turn\\":1}}")
+      self.on_control(self.device_root + "/event/knob", "{{\\"turn\\":-1}}")
       self.smoke_stage("selected")
       delay = 200
     elif stage == 4
@@ -86,7 +88,7 @@ def run(base, topic_root, player, device_root):
   def smoke_stage(stage)
     var expected = stage == "opened" || stage == "selected" || stage == "reopened"
     if self.picker != expected raise "test_failed", stage + " picker state" end
-    if stage != "opened" && self.playlist_index != 1 raise "test_failed", "selected playlist lost" end
+    if stage != "opened" && self.playlist_index != 9 raise "test_failed", "tenth playlist lost" end
     if self.exit_pending raise "test_failed", "playlist gesture requested exit" end
     shared.set(stage, true)
   end
@@ -98,7 +100,7 @@ def run(base, topic_root, player, device_root):
         if not condition: raise AssertionError(label)
         report['checks'].append(label)
     try:
-        for name,source in [(module_name,module),(app_name,app)]:
+        for name,source in [(module_name,module),(playlist_name,playlists),(app_name,app)]:
             installed.append(name)
             result=request('PUT','apps/script/'+name,source)
             check(result.get('error') is None,'compile '+name)
@@ -107,7 +109,12 @@ def run(base, topic_root, player, device_root):
         fields=fields.get('fields',[]) if isinstance(fields,dict) else fields
         neutral={f['key']:f.get('value',f.get('default')) for f in fields}
         check(not neutral.get('player') and not neutral.get('device_root'), 'neutral entity and clock defaults')
-        check(all(not neutral.get('playlist'+str(n)) for n in range(1,5)), 'empty playlist defaults')
+        fields=request('GET','apps/'+playlist_name+'/config')['fields']
+        neutral_playlists={f['key']:f['value'] for f in fields}
+        check(len(neutral_playlists)==10,'ten configurable playlist slots')
+        check(all(not neutral_playlists.get('playlist'+str(n)) for n in range(1,11)), 'empty playlist defaults')
+        request('PATCH','apps/'+playlist_name+'/config',
+                {'playlist'+str(n):f'Test {n}|spotify:playlist:EXAMPLE_{n}|playlist' for n in range(1,11)})
         request('PATCH','apps/'+app_name+'/config',{'root':topic_root,'player':player,'device_root':device_root,'icon_name':'','long_ms':1200,'picker_ms':3000})
         row=next(a for a in request('GET','apps') if a['name']==app_name)
         check(row.get('ondemand') is True,'official on-demand registration')
