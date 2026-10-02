@@ -2,126 +2,165 @@
 
 ## Components
 
-1. **TC002 native input hook** detects a global main-knob hold and opens the
-   Berry app. While the app is active it routes rotary and rocker events to the
-   script before applying normal carousel or local-volume behaviour.
-2. **`apps/sonos_remote.ax`** owns the exclusive display and maps physical
-   events to a narrow MQTT protocol. It stores no Home Assistant token or MQTT
-   password.
-3. **TC002 AWTRIX Bridge** subscribes to the command topic, validates JSON and
-   the requested `media_player`, serializes commands with an async lock, calls
-   the Home Assistant API, then publishes retained player state.
-4. **Home Assistant** provides the Sonos entity and the standard
-   `media_player` services.
-
-## MQTT contract
-
-Default root: `tc002/sonos_remote/v2`.
-
-The app publishes JSON to `<root>/command`:
-
-```json
-{"action":"play_pause","player_entity_id":"media_player.living_room"}
+```mermaid
+flowchart LR
+  F[Official on-demand menu/lifecycle] --> B[Sonos Remote Berry]
+  T[Native top-button events] --> B
+  K[TC002 knob MQTT while active] --> B
+  B <-->|commands / retained state| A[Home Assistant blueprint]
+  A --> S[Sonos integration]
+  M[Artist-name settings module] --> B
+  O[Optional image converter] -->|16x16 RGB| B
 ```
 
-Allowed actions and additional fields are:
+`apps/sonos_remote.ax` is an on-demand tool; the firmware loads it only when
+started and unloads it on exit. `apps/sonos_artist_names.ax` is an imported
+settings module. `home-assistant/sonos_remote.yaml` uses native HA automations,
+MQTT and Sonos integrations. The TC002 AWTRIX Bridge add-on is not a dependency.
+The code stores no HA token or broker password.
 
-| Action | Additional fields |
-| --- | --- |
-| `refresh` | none |
-| `play_pause` | none |
-| `next` | none |
-| `previous` | none |
-| `volume` | `value`, integer `0..100` |
-| `delta` | `value`, integer `-25..25` |
-| `play_media` | non-empty `media_content_id` and `media_content_type` |
+## Lifecycle and input
 
-The bridge publishes retained text payloads to:
+`@ondemand` keeps the app out of the carousel. Firmware select-hold opens its
+menu globally. Menu or HTTP launch constructs a fresh app and runs `setup()`.
+The app starts its control state there: beta 1.1.5's API start path did not
+invoke `on_show()` consistently in the smoke test. `on_show()` is an idempotent
+fallback. The firmware, not manual `rotation.pause()`, owns exclusive display.
 
-- `<root>/state/artist`
-- `<root>/state/title`
-- `<root>/state/playing`
-- `<root>/state/volume`
-- `<root>/state/player_name`
-- `<root>/state/error`
+`on_button_event` claims top-button presses. Left/right presses and repeat
+change Sonos volume; select press records time, and a release below 900 ms
+confirms the picker or toggles play/pause. The guard suppresses the firmware's
+synthetic select release at its one-second hold boundary. Native select-hold
+always exits the on-demand session, including when navigation is blocked.
 
-Bridge `0.2.50` publishes `<root>/state/cover`. Its JSON payload contains
-`width`, `height`, and exactly 256 RGB888 integers for a `16×16` image. An
-empty retained payload means that artwork is unavailable and tells the Berry
-app to use its local icon fallback. The protected Home Assistant image URL and
-Supervisor token stay inside the add-on.
+The app subscribes to `<device_root>/state/buttons/knob` and
+`<device_root>/event/knob` only while loaded. It never subscribes to MQTT copies
+of left/right/select. Knob button edges distinguish short press from exit hold;
+rotary `turn` direction either selects a playlist or requests next/previous.
+`blockNavigation=true` suppresses the local knob brightness/volume panel and
+Assist path. `on_hide()` resets held presses, timers and navigation blocking.
+`rotation.next()` asks the native framework to end the session and advance.
+API next/previous, showing another app, saving settings and unloading also end
+it. A missing backend heartbeat ends the session after 65 seconds. A backend
+refresh request does not fabricate a received heartbeat.
 
-The bridge rejects unknown actions, invalid volume values, missing content, and
-entities that are not valid Home Assistant `media_player` objects.
+Entry by global knob hold belongs only to the compatibility v2 app. It is not
+available in the native v3 adapter because inactive on-demand scripts do not
+run or receive MQTT callbacks.
 
-## Playlist picker
+## MQTT protocol
 
-The Berry app owns up to four ordered entries in its native AWTRIX settings.
-Each `Playlist 1`–`Playlist 4` field uses `Name|content id|content type` and an
-empty field is ignored. On entry, the script parses the fields locally and
-opens the picker without waiting for retained MQTT data. Knob rotation changes
-only the highlighted index while the picker is open; a short press publishes
-`play_media` with the selected entry. The picker times out without starting
-media and never changes the existing mappings once playback controls are active.
+The default root is `tc002/sonos_remote/v2`; it remains configurable to preserve
+protocol compatibility. Use a unique root per automation/remote. Commands are
+non-retained JSON objects sent to `<root>/command`, always including the
+configured `player_entity_id`. The blueprint requires exact equality with its
+selected entity and accepts only these actions:
 
-## Input and exclusive mode
+| Action | Extra fields | Native HA action |
+| --- | --- | --- |
+| refresh | none | publish current metadata |
+| play_pause | none | media_player.media_play_pause |
+| next | none | media_player.media_next_track |
+| previous | none | media_player.media_previous_track |
+| volume | numeric value 0–100, excluding booleans | media_player.volume_set |
+| delta | numeric value −25–25, excluding booleans | media_player.volume_set |
+| play_media | nonempty media_content_id ≤768 chars; type ≤64 chars | media_player.play_media |
 
-The native hook watches the select button outside `sonos_remote`. After
-`long_ms`, it activates the app and consumes the release edge. This avoids a
-short-press action immediately after entering the remote.
+Services are fixed branches, never derived from arbitrary incoming strings.
+Malformed JSON, lists/scalars, wrong entity, unknown actions and invalid values
+are stopped before any service call. A delta requires a known current volume
+and clamps the result to 0–1. Unknown/unavailable players receive no media
+command. Service failures appear in HA automation traces; they are not presented
+as successful commands. Native actions require no `?return_response`.
 
-`on_show()` pauses rotation and marks the app active. While active:
+MQTT topic roots are limited to 96 characters with no trailing slash, wildcard
+`+`/`#` or newline. The broker must permit the configured command, state and
+clock input topics. Do not retain commands: clear any retained command left by
+another publisher before enabling an automation. This is a local authenticated
+MQTT protocol, not a remote authorization boundary.
 
-- the official TC002 input topics distinguish short and long select presses,
-  rotary movement and the two rocker buttons;
-- the picker consumes rotary movement only during its initial selection phase;
-- the rocker changes Sonos volume without touching the local speaker;
-- `should_show()` returns true only for the active session, keeping the launcher
-  out of the normal carousel;
-- `exit_mode()` resumes rotation and advances to the next app.
+Retained text state topics: `artist`, `title`, `playing`, `volume` (0–100),
+`player_name`, `error`, `heartbeat`, all under `<root>/state/`. Empty volume means
+unknown, never a fabricated zero. State changes, HA startup, a 30-second timer
+and refresh commands publish metadata. Empty title/artist have app fallbacks.
+`error` describes an unavailable player; detailed service errors stay in traces.
 
-The exit hold is handled in Berry. The native hook deliberately ignores a hold
-that begins while `sonos_remote` is current, preventing exit from reopening the
-same app.
+## Concurrency and feedback
 
-## Display state
+HA `mode: queued` serializes commands and refreshes, with a bounded 30-run queue.
+Overflow is logged rather than creating an unlimited backlog. State is read at
+**execution time**, never copied from an old queued trigger. Commands and
+metadata therefore do not race independently in the automation.
 
-The 52×16 view reserves the left `16×16` square for artwork. Artist and title
-are white, centred in the remaining 36 columns, and scroll independently when
-necessary. The artist remains uppercase.
+The Berry app uses an optimistic absolute volume once known; otherwise it sends
+a bounded delta. Every native press/repeat resets the two-second overlay. The
+three-second settling window ignores stale values even after a matching echo.
+Afterward, live observed volume replaces the optimistic value. Reports do not
+cancel the overlay. A service failure can therefore reconcile the display to
+the unchanged actual volume; no arbitrary acknowledgment is fabricated.
 
-During a rocker change, the normal view is replaced for two seconds by a Sonos
-volume overlay. Every new press restarts that timer. `pending_until` blocks an
-older periodic Home Assistant report from replacing the optimistic value for
-three seconds; a matching report confirms it early.
+Berry handlers and drawing run in the firmware script context. Network JSON is
+parsed in callbacks, not in `draw()`. Do not add blocking waits or downloads to
+that drawing path. Do not run an old add-on and blueprint on the same root.
 
-## Concurrency rules
+## Playlists and display
 
-- Home Assistant service calls are serialized by the bridge's Sonos controller
-  lock. Rapid rocker commands therefore cannot race independent refreshes.
-- The app computes the next absolute volume from its optimistic value after the
-  first valid state report. Before that, it sends a bounded delta.
-- A periodic refresh must not clear the volume overlay or overwrite a pending
-  volume with an older state.
-- MQTT callbacks hand work back to the asyncio event loop. Rendering and state
-  mutation do not run concurrently on the MQTT client thread.
-- Command service requests must not append `?return_response`.
+Four Berry `Name|content id|content type` settings are parsed once on launch.
+No configured entries means immediate now-playing controls. Otherwise rotation
+selects an entry, short select/knob sends `play_media`, and the picker closes.
+Timeout closes it without starting anything. Sonos favourites use e.g. `SQ:10`
+with `favorite_item_id`; Spotify URIs use `spotify:playlist:ID` and `playlist`.
+The receiving Sonos integration decides content support; no Spotify credentials
+are required by this protocol.
 
-## Adding a command
+52×16 layout: optional 16×16 artwork at x=0..15, separator x=16, two text rows in
+x=17..51. Artist baseline 5, title baseline 14; white and centred where fitting.
+Artist is uppercase; title preserves received case. Geometry uses the firmware's
+current text font and `text_ink_width`, not string length to determine fit.
 
-1. Add the physical mapping in the Berry input hook and publish a new explicit
-   `action` string. Keep the payload small and do not add credentials.
-2. Add the action to the allow-list in the bridge's
-   `SonosController.remote_command()`.
-3. Validate every new field before calling Home Assistant.
-4. Call one specific Home Assistant service without `?return_response`.
-5. Refresh and publish state only after the service call completes.
-6. Add Berry contract tests, bridge unit tests, and a physical test that checks
-   the carousel and local TC002 controls were not affected.
+Long artist names use one full pass then a centred explicit fitting alias.
+Unconfigured groups or oversized aliases continue scrolling. Duplicate artist
+reports do not reset the completed pass. A changed artist/session toggles the
+700/701 ms scroll hold option because the firmware's scroll bank keys state by
+geometry/options, not text identity. The name module parses four bounded,
+neutral rule lists and final overrides; old internal keys are retained only to
+preserve previously saved settings. No artist or playlist catalogue is required.
 
-## Adding a setting
+Artwork payloads contain width=16, height=16, and exactly 256 integer RGB888
+pixels (0..0xFFFFFF). Malformed JSON and invalid pixels are caught and rejected.
+The blueprint's default clears artwork and uses built-in shapes or an optional
+local icon. Protected image download/crop/resize belongs to an optional separate
+publisher; it is not performed by this blueprint. The app keeps pixels in RAM.
 
-Declare user-editable Berry values in a leading `# @config` line, read them
-with `store.get()`, and give them a bounded type/range. If the bridge also owns
-the setting, extend its settings defaults and validator, its HTTP schema, and
-its UI together. Existing installations must retain a safe default.
+## HTTP and settings
+
+The existing AWTRIX API supplies the UI and deployment; this project adds no
+firmware HTTP route:
+
+- GET `/api/v1/apps` exposes on-demand registration and errors.
+- GET/PUT `/api/v1/apps/script/<name>` reads/installs complete Berry source.
+- GET/PATCH `/api/v1/apps/<name>/config` reads/updates declared settings (flat JSON patch).
+- PUT `/api/v1/apps/active` starts the requested app.
+- POST `/api/v1/apps/next` ends the session and advances.
+- GET `/api/v1/display/screen` reads the actual framebuffer.
+- DELETE `/api/v1/apps/<name>` removes a disposable app.
+
+Firmware stores and validates bounded `# @config` fields. Source defaults are
+neutral. Home Assistant blueprint selectors collect the Sonos entity and root;
+HA validates the automation schema, and runtime protocol validation checks
+incoming commands. Module/app saves restart dependent code; native lifecycle
+releases input ownership. The remote uses all 12 config slots, so extra optional
+settings may need a module or a revised UI schema.
+
+## Extend safely
+
+For a new command, add a specific Berry event mapping, an allow-listed payload
+with bounded fields, and a fixed HA `choose` service branch. Refresh state after
+the completed service. Add rejection fixtures and actual-runtime input checks.
+Do not map the same physical button through native and MQTT paths.
+
+For a new option, declare a bounded `# @config` or a typed blueprint input,
+read it once under its owning store/automation identity, preserve legacy keys
+on upgrade, and document a safe default. If adding an optional integration,
+keep its credentials off the clock and preserve the no-artwork/basic-control
+path. Test clean settings, unload/exit and backend loss before distribution.

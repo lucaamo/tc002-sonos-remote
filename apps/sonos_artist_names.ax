@@ -1,0 +1,33 @@
+# @module sonos_artist_names
+# @name Sonos Artist Names
+# @desc Optional artist aliases after one complete scroll in Sonos Remote
+# @version 1.2
+# @config relax text "Artist rules 1" default="" maxlen=4096 help="Full name|Short name; separate with ;. Use * to keep the complete name scrolling."
+# @config estate text "Artist rules 2" default="" maxlen=4096 help="Full name|Short name; separate with ;. Use * to keep the complete name scrolling."
+# @config hits text "Artist rules 3" default="" maxlen=4096 help="Full name|Short name; separate with ;. Use * to keep the complete name scrolling."
+# @config nineties text "Artist rules 4" default="" maxlen=4096 help="Full name|Short name; separate with ;. Use * to keep the complete name scrolling."
+# @config aliases text "Artist rule overrides" default="" maxlen=2048 help="Full name|Short name; these rules override all four lists."
+
+import string
+
+var m = module("sonos_artist_names")
+m.names = {}
+# Read under the module identity; calling-app functions have a different store.
+for key : ["relax", "estate", "hits", "nineties", "aliases"]
+  var spec = store.get(key)
+  if spec != nil && spec != ""
+    for entry : string.split(spec, ";")
+      var pair = re.search("^\\s*([^|]+?)\\s*\\|\\s*([^|]+?)\\s*$", entry)
+      if pair != nil
+        var full = string.toupper(pair[1])
+        var short = string.toupper(pair[2])
+        if re.search("\\S", full) != nil && re.search("\\S", short) != nil
+          m.names[full] = short == "*" ? "" : short
+        end
+      elif entry != ""
+        log("Sonos artist names: ignored invalid rule")
+      end
+    end
+  end
+end
+return m

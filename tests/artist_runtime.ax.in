@@ -1,0 +1,177 @@
+# @name Sonos Artist Regression
+# @headless true
+__CONFIG__
+
+import json
+import string
+import sonos_artist_test_names
+var sonos_artist_names = sonos_artist_test_names
+
+# Run the actual production class with lexical, app-local fakes. No MQTT
+# subscriptions, commands, navigation or speaker settings reach real hardware.
+def check(condition, message)
+  if !condition raise "test_failed", message end
+end
+
+def exercise()
+  check(sonos_artist_names.names.find("VASCO ROSSI") == "VASCO", "module alias parsing")
+  check(sonos_artist_names.names.find("NATALIE IMBRUGLIA") == "NATALIE", "second module alias")
+  check(sonos_artist_names.names.find("BACKSTREET BOYS") == "", "explicit continuous rule")
+  check(sonos_artist_names.names.find("DUPLICATE ARTIST") == "LAST", "last duplicate wins")
+  check(sonos_artist_names.names.find("INVALID") == nil, "invalid rule ignored")
+  check(sonos_artist_names.names.find("EMPTY ARTIST") == nil, "blank alias ignored")
+  check(sonos_artist_names.names.find("PLAYLIST ARTIST") == "NINETIES", "playlist lists merged in order")
+  check(sonos_artist_names.names.find("HITS ARTIST") == "HITS", "independent playlist list loaded")
+  check(sonos_artist_names.names.find("VASCO ROSSI") == "VASCO", "personal override wins over playlist")
+  var names = sonos_artist_names.names
+  var sonos_artist_names = module("test_names")
+  sonos_artist_names.names = {"VASCO ROSSI":names.find("VASCO ROSSI"), "NATALIE IMBRUGLIA":names.find("NATALIE IMBRUGLIA"), "ARTISTA LUNGO":"NOME TROPPO LUNGO", "STING":"ST"}
+  var calls = []
+  var completed = 0
+  var clock = 10000
+  var now_ms = def () return clock end
+  var width = def () return 52 end
+  var height = def () return 16 end
+  var clear = def () calls.clear() end
+  var line = def (x1,y1,x2,y2,c) return nil end
+  var text_ink_width = def (s) return size(s) * 5 end
+  var text = def (x,y,s,c) calls.push({"kind":"text","x":x,"y":y,"value":s,"color":c}) end
+  var rect_fill = def (x,y,w,h,c) calls.push({"kind":"clear","x":x,"y":y,"width":w,"height":h}) end
+  var scroll_text = def (x,y,w,s,c,opts) calls.push({"kind":"scroll","value":s,"width":w}); return completed end
+  var settings = module("test_settings")
+  var navigation_blocked = false
+  settings.get = def (key) return nil end
+  settings.set = def (key,value) navigation_blocked = value end
+  var rotation = module("test_rotation")
+  var exits = 0
+  rotation.next = def () exits += 1 end
+  var mqtt = module("test_mqtt")
+  var commands = []
+  mqtt.publish = def (topic,payload) commands.push(json.load(payload)) end
+
+__CLASS__
+
+  var app = SonosRemote()
+  app.set_artist("Vasco Rossi")
+  app.draw_artist(17,35)
+  check(size(calls)==1 && calls[0]["kind"]=="scroll" && calls[0]["value"]=="VASCO ROSSI", "full first pass")
+  check(!app.artist_done, "not complete too early")
+  calls.clear()
+  completed = 1
+  app.draw_artist(17,35)
+  check(app.artist_done && calls[-1]["value"]=="VASCO", "alias after complete pass")
+  check(calls[-1]["x"]==22 && calls[-1]["color"]==0xFFFFFF, "centered white alias")
+  var hold = app.header_scroll["holdMs"]
+  app.on_state(app.root+"/state/artist", "vasco rossi")
+  check(app.artist_done && app.header_scroll["holdMs"]==hold, "duplicate normalized MQTT does not reset")
+  calls.clear()
+  app.draw_artist(17,35)
+  check(size(calls)==2 && calls[-1]["value"]=="VASCO", "alias persists on repeated frames")
+  app.set_artist("Mario Rossi")
+  check(!app.artist_done && app.header_scroll["holdMs"]!=hold, "equal-width new artist resets renderer")
+  app.set_artist("Backstreet Boys")
+  calls.clear()
+  app.draw_artist(17,35)
+  app.draw_artist(17,35)
+  check(size(calls)==2 && calls[0]["kind"]=="scroll" && calls[1]["value"]=="BACKSTREET BOYS", "unconfigured group keeps scrolling")
+  app.set_artist("Artista Lungo")
+  calls.clear()
+  app.draw_artist(17,35)
+  check(size(calls)==1 && calls[0]["kind"]=="scroll", "oversized alias keeps full name")
+  app.set_artist("Sting")
+  calls.clear()
+  app.draw_artist(17,35)
+  check(size(calls)==1 && calls[0]["value"]=="STING" && calls[0]["x"]==22, "fitting full name centered unchanged")
+  app.set_artist("Vasco Rossi")
+  app.artist_done = true
+  hold = app.header_scroll["holdMs"]
+  app.enter_mode()
+  check(!app.artist_done && app.header_scroll["holdMs"]!=hold, "reentry restarts first pass")
+  app.artist_done = true
+  calls.clear()
+  app.draw_artist(17,24)
+  check(size(calls)==1 && calls[0]["kind"]=="scroll", "width change never clips alias")
+  app.set_artist("")
+  calls.clear()
+  app.draw_artist(17,35)
+  check(calls[-1]["value"]=="SONOS", "missing artist fallback")
+  app.player = "media_player.example"
+  app.device_root = "test_clock"
+  app.on_show()
+  check(app.active && navigation_blocked, "native on-show owns active controls")
+  commands.clear()
+  app.on_button_event("select", "press")
+  clock += 100
+  check(app.on_button_event("select", "release"), "native press claimed")
+  check(size(commands)==1 && commands[0]["action"]=="play_pause", "short native select once")
+  app.on_button_event("select", "press")
+  clock += 1000
+  app.on_button_event("select", "release")
+  check(size(commands)==1, "firmware long-release never toggles playback")
+  app.volume = 40
+  app.on_button_event("right", "press")
+  check(app.volume==45 && commands[-1]["value"]==45, "native right changes Sonos")
+  var first_osd = app.osd_until
+  clock += 500
+  app.on_button_event("right", "repeat")
+  check(app.volume==50 && app.osd_until==first_osd+500, "repeat restarts two-second OSD")
+  app.picker = true
+  app.draw()
+  check(calls[-2]["value"]=="SONOS" && calls[-1]["value"]=="50%", "volume feedback takes priority over picker")
+  app.picker = false
+  app.on_state(app.root+"/state/volume", "45")
+  check(app.volume==50, "old volume ignored while command pending")
+  app.on_state(app.root+"/state/volume", "50")
+  app.on_state(app.root+"/state/volume", "45")
+  check(app.volume==50, "old report after matching echo also ignored")
+  clock += 3001
+  app.on_state(app.root+"/state/volume", "48")
+  check(app.volume==48 && app.label=="48%", "observed volume reconciles after settling")
+  app.on_state(app.root+"/state/volume", "101")
+  check(app.volume==48, "invalid volume rejected")
+  commands.clear()
+  app.on_control("test_clock/state/buttons/right", "1")
+  check(size(commands)==0, "duplicate MQTT button ignored")
+  app.on_control("test_clock/event/knob", "{\"turn\":1}")
+  check(size(commands)==1 && commands[-1]["action"]=="next", "MQTT rotary advances track")
+  app.on_control("test_clock/event/knob", "{\"turn\":-1}")
+  check(commands[-1]["action"]=="previous", "MQTT rotary reverses track")
+  app.add_playlist("Test list|spotify:playlist:EXAMPLE|playlist")
+  app.on_hide()
+  app.on_show()
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(app.picker, "entry release cannot launch playlist")
+  app.on_button_event("select", "press")
+  clock += 100
+  app.on_button_event("select", "release")
+  check(!app.picker && commands[-1]["action"]=="play_media", "native selection starts named playlist")
+  check(commands[-1]["media_content_id"]=="spotify:playlist:EXAMPLE", "playlist ID preserved")
+  app.load_cover("not JSON")
+  check(size(app.cover)==0, "malformed cover does not crash")
+  var pixels = []
+  for i : 0 .. 255 pixels.push(0x123456) end
+  app.load_cover(json.dump({"width":16,"height":16,"pixels":pixels}))
+  check(size(app.cover)==256, "valid artwork accepted")
+  pixels[0] = -1
+  app.load_cover(json.dump({"width":16,"height":16,"pixels":pixels}))
+  check(size(app.cover)==0, "invalid RGB pixel rejected")
+  app.last_state = clock
+  var received = app.last_state
+  clock += 3000
+  app.loop()
+  check(app.last_state==received && commands[-1]["action"]=="refresh", "refresh never fabricates backend heartbeat")
+  clock += 65001
+  app.loop()
+  check(exits==1, "offline session ends via native navigation")
+  app.on_hide()
+  check(!app.active && !navigation_blocked && app.select_at==-1, "hide releases navigation and press state")
+  commands.clear()
+  app.on_control("test_clock/event/knob", "{\"turn\":1}")
+  check(size(commands)==0, "inactive app never handles rotary")
+  shared.set("sonos_artist_regression", "46 runtime checks passed")
+end
+
+class Regression
+  def setup() exercise() end
+end
+return Regression()

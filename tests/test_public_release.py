@@ -16,7 +16,7 @@ PATCH = (ROOT / "patches" / "tc002-v1.1.2-tc002.1-global-sonos-shortcut.patch").
 
 class PublicReleaseTests(unittest.TestCase):
     def test_berry_contract(self) -> None:
-        self.assertIn("# @version 2.6", APP)
+        self.assertIn("# @version 3.0", APP)
         self.assertIn('default="tc002/sonos_remote/v2"', APP)
         self.assertIn('"player_entity_id":self.player', APP)
         self.assertIn('"action":"play_media"', APP)
@@ -24,12 +24,24 @@ class PublicReleaseTests(unittest.TestCase):
         self.assertEqual(APP.count("# @config "), 12)
         self.assertTrue(APP.rstrip().endswith("return SonosRemote()"))
 
+    def test_new_install_has_no_personal_configuration(self) -> None:
+        self.assertIn('# @config device_root text "AWTRIX MQTT topic prefix" default=""', APP)
+        self.assertNotIn('default="tc002-sonos-ng"', APP)
+        self.assertIn('if self.device_root != ""', APP)
+        module = (ROOT / "apps/sonos_artist_names.ax").read_text(encoding="utf-8")
+        defaults = re.findall(r'^# @config \w+ text "[^"]+" default="([^"]*)"', module, re.M)
+        self.assertEqual(defaults, [""] * 5)
+        for slot in range(1, 5):
+            self.assertIn(f'"Artist rules {slot}"', module)
+
     def test_exclusive_input_mapping(self) -> None:
-        self.assertIn("rotation.pause()", APP)
-        self.assertIn("rotation.resume()", APP)
+        self.assertIn("# @ondemand", APP)
+        self.assertNotIn("rotation.pause()", APP)
+        self.assertNotIn("rotation.resume()", APP)
+        self.assertIn("def on_button_event(btn, event)", APP)
         self.assertIn('"/event/knob"', APP)
-        self.assertIn('"/state/buttons/right"', APP)
-        self.assertIn('"/state/buttons/left"', APP)
+        self.assertNotIn('"/state/buttons/+"', APP)
+        self.assertNotIn('"/state/buttons/right"', APP)
         self.assertIn('self.send("play_pause")', APP)
 
     def test_playlist_picker_contract(self) -> None:

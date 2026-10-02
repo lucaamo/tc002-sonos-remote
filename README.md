@@ -1,184 +1,174 @@
 # Sonos Remote for AWTRIX NG on Ulanzi TC002
 
-Sonos Remote temporarily turns an Ulanzi TC002 running AWTRIX NG into a
-physical controller for one Home Assistant `media_player`. The app pauses the
-normal carousel, shows the current artist and title, and routes the TC002's
-controls to Sonos without storing a Home Assistant token on the clock.
+A reusable Berry controller for one Home Assistant Sonos player. Version 3.0
+uses AWTRIX NG's official **on-demand** framework and a Home Assistant blueprint.
+No TC002 AWTRIX Bridge add-on, private firmware patch, Home Assistant token on
+the clock, or author's network configuration is required.
 
-This repository contains the reusable Berry app, the integration contract, and
-the exact proof-of-concept firmware patch used to make the remote available
-from any carousel page. It does **not** contain firmware binaries, device
-backups, MQTT credentials, Home Assistant tokens, or the third-party LaMetric
-icon artwork.
+This is a community example, not an app accepted or bundled by Blueforcer.
+Tested with official TC002 beta **AWTRIX NG 1.1.5** and Home Assistant **2026.9.4**.
+Other firmware versions and TC001 are not verified. See
+[acceptance results and remaining checks](docs/TESTING.md) and
+[upstream readiness](docs/UPSTREAM_READINESS.md).
 
-![Status: tested on a physical TC002](https://img.shields.io/badge/status-tested%20on%20TC002-2ea44f)
-![CI](https://github.com/lucaamo/tc002-sonos-remote/actions/workflows/ci.yml/badge.svg)
-![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange)
+## Controls and a beta limitation
 
-## Controls
+From any carousel page, **hold the top middle/select button for one second**,
+choose **Scripts**, then **Sonos Remote**. The firmware suspends the carousel.
+The web UI's **Start** button also launches it.
 
-| TC002 control | Sonos action |
+| While Sonos Remote is running | Action |
 | --- | --- |
-| Hold the main knob | Enter or leave exclusive Sonos Remote mode |
-| Rotate on entry | Browse the configured playlist/favourite list |
-| Short knob press on entry | Start the highlighted playlist or favourite |
-| Short knob press during playback | Play/pause |
-| Rotate clockwise | Next track |
-| Rotate counter-clockwise | Previous track |
-| Rocker `+` / `-` | Raise/lower Sonos volume by the configured step |
+| Rotate the knob in the initial picker | Choose one of four configured playlists/favourites |
+| Short knob press or short top select press | Start the highlighted item; otherwise play/pause |
+| Rotate clockwise / counter-clockwise after picker | Next / previous track |
+| Top right / left button | Increase / decrease Sonos volume |
+| Hold a volume button | Repeat volume changes |
+| Hold top select for one second | Firmware exits and restores the carousel |
+| Hold knob for configured exit duration, then release | App exits and restores the carousel |
 
-The rocker changes the Sonos player only. It does not change the TC002's local
-speaker volume. Each rocker press restarts a two-second volume overlay, and the
-app ignores stale Home Assistant volume reports during the short settling
-window.
+**Entry by holding the knob from anywhere is not part of this native adapter.**
+The beta routes the three top buttons to scripts locally; it exposes knob events
+only through MQTT. The app subscribes to the knob only during an on-demand
+session. It uses `blockNavigation` then to suppress the clock's local
+brightness/volume panel. Sonos volume and the TC002 speaker remain separate.
+No hidden global listener or firmware constant is required.
 
-## Architecture
+The old global MQTT entry prototype is preserved in
+[`compatibility/sonos_remote_mqtt_v2.ax`](compatibility/sonos_remote_mqtt_v2.ax).
+Do not run both controllers together. The old
+[`patches/`](patches/) directory is historical source-only material, not an
+installation instruction for the official beta.
 
-```mermaid
-flowchart LR
-    A[TC002 controls] --> B[AWTRIX NG input hook]
-    B --> C[Sonos Remote Berry app]
-    C <-->|MQTT JSON + retained state| D[TC002 AWTRIX Bridge add-on]
-    D <-->|Home Assistant API| E[Home Assistant]
-    E --> F[Sonos media_player]
-```
-
-The Berry app publishes a small allow-listed command object to
-`tc002/sonos_remote/v2/command`. The bridge verifies the selected entity begins
-with `media_player.`, fetches it from Home Assistant, accepts only the supported
-actions, and calls the relevant `media_player` service. State is returned under
-`tc002/sonos_remote/v2/state/`. See [the architecture document](docs/ARCHITECTURE.md)
-for the complete flow and concurrency rules.
+Official API references: [on-demand lifecycle](https://ang.blueforcer.de/guides/scripting/several-apps/),
+[button events](https://ang.blueforcer.de/guides/scripting/time-buttons-sensors/) and
+[TC002 controls](https://ang.blueforcer.de/guides/device-controls/).
 
 ## Requirements
 
-- Ulanzi TC002 with an AWTRIX NG TC002 build that supports Berry scripts.
-- MQTT enabled on both AWTRIX NG and Home Assistant, using the same broker.
-- [TC002 AWTRIX Bridge Home Assistant add-on](https://github.com/lucaamo/tc002-awtrix-ha-addon)
-  version `0.2.50` or newer for `16×16` album artwork (`0.2.49` provides the
-  earlier `10×10` layout; `0.2.48` is sufficient for playlists without artwork).
-- A Sonos entity exposed in Home Assistant as `media_player.*`.
-- For the global hold gesture, a firmware integration equivalent to the
-  proof-of-concept patch in this repository. The patch itself targets one exact
-  historical TC002 port commit; read its warning before using it.
+- TC002 running official AWTRIX NG beta 1.1.5 with its on-demand API.
+- Home Assistant's MQTT and Sonos integrations; both clock and HA use the same broker.
+- One Sonos `media_player` entity available in Home Assistant.
+- Firmware input topics `<clock-prefix>/state/buttons/knob` and
+  `<clock-prefix>/event/knob` enabled for rotary control.
+- MQTT credentials belong in the device/HA settings, never Berry source or this repository.
 
-## Install the Home Assistant side
+## Install Home Assistant
 
-1. Add `https://github.com/lucaamo/tc002-awtrix-ha-addon` as a Home Assistant
-   add-on repository, then install and start **TC002 AWTRIX Bridge**.
-2. Configure the add-on to use the same MQTT broker as AWTRIX NG. Prefer a
-   dedicated MQTT account and keep its password in Home Assistant/AWTRIX
-   settings, never in this repository or the Berry source.
-3. In the bridge Sonos settings, enable the MQTT command and state relay. The
-   Berry app owns the player choice, volume step, gestures and playlist list.
-4. Leave the MQTT topic root at `tc002/sonos_remote/v2` unless you also change
-   the bridge implementation.
+1. Import [the blueprint](home-assistant/sonos_remote.yaml) in **Settings →
+   Automations & scenes → Blueprints**. Use the file's GitHub URL or copy it to
+   `config/blueprints/automation/lucaamo/sonos_remote.yaml` and reload automations.
+2. Create an automation from **AWTRIX NG Sonos Remote**. Choose your Sonos player
+   and a unique MQTT root, e.g. `clock_living_room/sonos_remote`.
+3. Leave **Use built-in icon instead of external artwork** enabled for a
+   standalone installation. Enable the automation.
+4. Use the exact same entity and root in the Berry app. Each clock/player pair
+   needs a separate automation and root. Do not use a root already owned by the
+   older add-on: two responders can execute a command twice.
 
-The bridge uses these Home Assistant services:
+The blueprint uses fixed native actions:
+`media_player.media_play_pause`, `media_next_track`, `media_previous_track`,
+`volume_set`, `play_media` and `mqtt.publish`. Command services are invoked
+without `?return_response`; no REST response request is needed.
 
-- `media_player.media_play_pause`
-- `media_player.media_next_track`
-- `media_player.media_previous_track`
-- `media_player.volume_set`
-- `media_player.play_media`
+## Install Berry
 
-Command services are called without `?return_response`, because these services
-may otherwise return HTTP 400.
+In the clock web UI's **Scripts** tab, create `sonos_artist_names` and paste
+[the settings module](apps/sonos_artist_names.ax). Save it first. Then create
+`sonos_remote` and paste [the complete app](apps/sonos_remote.ax).
+Both compiler results must report `error: null`. Sonos Remote appears in
+**In the device menu**, not the ordinary rotation.
 
-## Install the Berry app
-
-Open the AWTRIX NG web interface, create a script named `sonos_remote` in the
-**Scripts** tab, paste [apps/sonos_remote.ax](apps/sonos_remote.ax), and save it.
-The compiler result must report `error: null`.
-
-The same install can be scripted:
+HTTP installation:
 
 ```sh
+curl -fsS -X PUT "http://AWTRIX_IP/api/v1/apps/script/sonos_artist_names" \
+  -H 'Content-Type: text/plain' --data-binary @apps/sonos_artist_names.ax
 curl -fsS -X PUT "http://AWTRIX_IP/api/v1/apps/script/sonos_remote" \
-  -H 'Content-Type: text/plain' \
-  --data-binary @apps/sonos_remote.ax
+  -H 'Content-Type: text/plain' --data-binary @apps/sonos_remote.ax
 ```
 
-Then open **Apps → Sonos Remote → settings** and configure:
+Configure the app using its gear on **Apps**:
 
 | Setting | Meaning |
 | --- | --- |
-| MQTT topic root | Keep `tc002/sonos_remote/v2` with the published bridge |
-| Sonos player entity | Home Assistant entity, for example `media_player.living_room` |
-| Volume step | Percentage points per rocker press |
-| Long press | Hold duration used to enter/leave the remote |
-| Playlist picker timeout | Time available to choose an item after entry |
-| Playlist 1–4 | `Name|content id|content type`; leave unused slots empty |
-| Music Meter icon name | Local `10×10` fallback icon used when artwork is unavailable |
-| Music icon colour | Colour used by the built-in compact fallback icon |
+| MQTT topic root | Match the blueprint's root; configurable independently per clock |
+| AWTRIX MQTT topic prefix | Copy System → MQTT → Topic prefix; used for knob input only |
+| Sonos player entity | Exactly the entity selected in the blueprint |
+| Volume step (%) | 1–25 percentage points per button press |
+| Knob exit hold (ms) | Active-session knob exit; does not change firmware select/menu timing |
+| Playlist picker timeout (ms) | Picker closes without playing if no choice is made |
+| Playlist 1–4 | `Name\|content id\|content type`, empty by default |
+| Music Meter icon name | Optional local fallback asset |
+| Music icon colour | Colour of the built-in animated fallback |
 
-Examples for one Playlist field:
+Playlist examples (enter literal `|` separators):
 
-- Sonos favourite: `Radio|SQ:10|favorite_item_id`.
-- Spotify playlist: `Relax|spotify:playlist:PLAYLIST_ID|playlist`.
+```text
+Radio|SQ:10|favorite_item_id
+Relax|spotify:playlist:PLAYLIST_ID|playlist
+```
 
-Player support for a content id/type pair should first be checked with Home
-Assistant's action tester.
+Names are personal settings; no Spotify login or author's playlist ids are
+needed by this app. Check the content id/type with HA's action tester first.
+Saving settings ends an active on-demand session; start it again from the menu.
 
-When one or more items are configured in the Berry app, entering Sonos Remote
-opens a short picker. Rotate the knob to browse and press it to start the
-highlighted item. If the picker times out, the normal now-playing controls take
-over without starting anything. After a selection, rotation returns to
-previous/next track and a short press returns to play/pause.
+## Display and artist rules
 
-### Optional Music Meter icon
+Artist and title are white, centred in the 35 columns to the right of the
+16×16 artwork/icon area. Artist is uppercase. Long titles scroll. For long
+artists, an explicitly configured short name remains centred after one full
+pass; unconfigured names and groups keep scrolling in full.
 
-The tested device uses a locally resized `10×10` copy of LaMetric icon `22046`
-under the name `sonos_music_meter`. That file is not included because its
-redistribution terms were not established. Without it, the app draws a compact
-animated equalizer itself and remains fully functional.
+In **Modules → Sonos Artist Names → settings**, the four empty rule lists and
+final overrides accept entries such as:
 
-### Album artwork
+```text
+Vasco Rossi|Vasco;Natalie Imbruglia|Natalie;Backstreet Boys|*
+```
 
-With bridge `0.2.50` or newer, Sonos Remote shows the current album artwork at
-the panel's native `16×16` height. The bridge fetches the Home Assistant-protected
-image, centre-crops and resizes it in memory, and publishes only 256 RGB pixel
-values. Artist and title use the remaining 36 columns. No Home Assistant token
-or original image URL is sent to the TC002, and
-the artwork is not written to the clock's filesystem. Missing or invalid images
-automatically fall back to the configured Music Meter icon.
+`*` means continuous full-name scrolling. Matching trims spaces and ignores
+ASCII case; last duplicate wins, overrides are applied last. A short name that
+does not fit never replaces the full name. Rules are user-curated settings,
+not a live Spotify artist catalogue. Existing module keys are retained for
+upgrade compatibility; none requires particular playlists.
 
-## Global long-press shortcut
+Every volume press restarts a two-second `SONOS` / `xx%` overlay. A three-second
+settling window suppresses stale HA volume reports, including reports arriving
+after a matching echo. MQTT loss ends the session after 65 seconds without
+state reception; native select-hold remains available throughout.
 
-An ordinary Berry app receives button events only while it is visible. The full
-experience therefore needs a small native hook that:
+## Optional artwork
 
-1. watches the main knob from every carousel page;
-2. opens `sonos_remote` after the configured hold time;
-3. gives the active script first refusal on rotary and rocker events;
-4. leaves the exit hold to the visible app, avoiding an immediate reopen.
+The standalone blueprint does **not** fetch or resize cover art. The built-in
+animated equalizer works without any image dependency. A local LaMetric Music
+Meter `22046` asset is not included; no third-party artwork is redistributed.
 
-The file in [`patches/`](patches/) is the implementation used for the physical
-prototype. It is reference material for upstreaming a generic shortcut API,
-not a patch to apply blindly to current AWTRIX NG. The upstream design proposal
-is tracked in [AWTRIX NG discussion #66](https://github.com/Blueforcer/awtrix-ng/discussions/66).
+For artwork, supply an optional external publisher on `<root>/state/cover` and
+turn off the blueprint's icon-only option. Payload: `{"width":16,"height":16,
+"pixels":[...]}` with 256 RGB888 integers. Invalid or absent data uses the icon.
+The previous add-on's image converter is one possible separate publisher, but
+is not needed for media controls or the native framework. Protect image URLs
+and credentials on the HA side; send only pixels to the clock.
 
-## Verification status
+## Development
 
-On a physical TC002 running AWTRIX NG 1.1.5, the prototype has verified:
+See [architecture and extension guide](docs/ARCHITECTURE.md) for the MQTT
+protocol, input ownership, validation and concurrency rules.
 
-- entry by holding the knob from a normal carousel page;
-- an exclusive screen that remains visible during control;
-- play/pause, next, previous, and separate Sonos volume control;
-- the initial multi-playlist picker, rotary selection and timeout path;
-- the two-second volume overlay and delayed state reconciliation;
-- exit by a second hold and return to the normal carousel;
-- persistence across two normal power cycles;
-- stock Ulanzi fallback at boot through the port's existing recovery gesture.
+```sh
+python3 -m pip install -r requirements-dev.txt
+python3 -m unittest discover -s tests -v
+```
 
-The public v2.6 Berry source is byte-identical to the script used for the
-multi-playlist and `16×16` album-art device tests. Run the checks in
-[docs/TESTING.md](docs/TESTING.md) before publishing further changes.
+The actual Berry runtime and isolated fresh-config test instructions are in
+[docs/TESTING.md](docs/TESTING.md). Automated input-handler checks do not replace
+physical knob/button testing. Back up your scripts and settings before replacing
+a working v2 controller; no firmware flashing is required.
 
-## License and trademarks
+## License
 
-This project is distributed under the
-[PolyForm Noncommercial License 1.0.0](LICENSE.md) and preserves the AWTRIX NG
-required notice. See [NOTICE.md](NOTICE.md) for provenance and third-party
-terms. AWTRIX, Ulanzi, Sonos, Home Assistant, Spotify, and LaMetric are names or
-trademarks of their respective owners; this is an unofficial community project.
+[PolyForm Noncommercial 1.0.0](LICENSE.md); see [NOTICE.md](NOTICE.md) for the
+required AWTRIX NG notice and provenance. AWTRIX, Ulanzi, Sonos, Home Assistant,
+Spotify and LaMetric are trademarks/names of their respective owners. This
+unofficial repository does not imply their endorsement.

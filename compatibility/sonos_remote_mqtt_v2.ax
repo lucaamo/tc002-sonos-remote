@@ -1,12 +1,11 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 3.0
-# @ondemand
-# @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the Home Assistant blueprint MQTT root"
+# @version 2.8
+# @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the bridge Sonos Remote topic"
 # @config device_root text "AWTRIX MQTT topic prefix" default="" maxlen=96 help="Copy System > MQTT > Topic prefix from your TC002"
 # @config player text "Sonos player entity" default="" maxlen=128 help="Home Assistant entity, for example media_player.living_room"
 # @config step number "Volume step (%)" default=5 min=1 max=25
-# @config long_ms number "Knob exit hold (ms)" default=1200 min=600 max=3000
+# @config long_ms number "Long press (ms)" default=1200 min=600 max=3000
 # @config picker_ms number "Playlist picker timeout (ms)" default=8000 min=3000 max=30000 step=1000
 # @config playlist1 text "Playlist 1" default="" maxlen=768 help="Name|content id|content type"
 # @config playlist2 text "Playlist 2" default="" maxlen=768 help="Name|content id|content type"
@@ -22,7 +21,7 @@ import sonos_artist_names
 class SonosRemote
   var root, device_root, player, step, long_ms, picker_ms, icon_name, accent
   var title, artist, playing, volume, label, artist_done, artist_rest, header_scroll
-  var active, session_started, pressed_at, long_handled, osd_until, pending_until, last_state, last_refresh, entered_at, select_at
+  var active, session_started, pressed_at, long_handled, osd_until, pending_until, last_state
   var playlists, picker, playlist_index, picker_until
   var cover
 
@@ -48,14 +47,11 @@ class SonosRemote
     self.label = "--%"
     self.active = false
     self.session_started = false
-    self.pressed_at = -1
+    self.pressed_at = 0
     self.long_handled = false
     self.osd_until = 0
     self.pending_until = 0
     self.last_state = 0
-    self.last_refresh = 0
-    self.entered_at = 0
-    self.select_at = -1
     self.playlists = []
     self.add_playlist(store.get("playlist1"))
     self.add_playlist(store.get("playlist2"))
@@ -70,15 +66,13 @@ class SonosRemote
   def setup()
     mqtt.subscribe(self.root + "/state/#", / topic, payload -> self.on_state(topic, payload))
     if self.device_root != ""
-      mqtt.subscribe(self.device_root + "/state/buttons/knob", / topic, payload -> self.on_control(topic, payload))
+      mqtt.subscribe(self.device_root + "/state/buttons/+", / topic, payload -> self.on_control(topic, payload))
       mqtt.subscribe(self.device_root + "/event/knob", / topic, payload -> self.on_control(topic, payload))
     else
       log("Sonos Remote: configure the AWTRIX MQTT topic prefix")
     end
-    # Native buttons use on_button_event; never subscribe to their MQTT copies.
-    # On-demand setup runs only on launch, including an API launch. Start here
-    # as beta 1.1.5 does not deliver on_show on every on-demand start path.
-    self.enter_mode()
+    settings.set("blockNavigation", false)
+    self.send("refresh")
   end
 
   def enter_mode()
@@ -90,8 +84,8 @@ class SonosRemote
     self.picker = size(self.playlists) > 0
     self.picker_until = self.picker ? now_ms() + self.picker_ms : 0
     settings.set("blockNavigation", true)
-    self.entered_at = now_ms()
-    self.last_refresh = now_ms()
+    rotation.show()
+    rotation.pause()
     self.send("refresh")
     log("Sonos Remote: control on")
   end
@@ -104,14 +98,21 @@ class SonosRemote
         self.long_handled = false
         return
       end
-      if payload == "0" && self.pressed_at >= 0
+      if payload == "0" && self.pressed_at != 0
         var held = now_ms() - self.pressed_at
-        self.pressed_at = -1
+        self.pressed_at = 0
         if held >= self.long_ms
           self.long_handled = true
-          if self.active self.exit_mode() end
+          if self.active self.exit_mode() else self.enter_mode() end
         elif self.active
-          self.confirm_or_toggle()
+          if self.picker && size(self.playlists) > 0
+            self.send_playlist(self.playlists[self.playlist_index])
+            self.picker = false
+            self.picker_until = 0
+          else
+            self.send("play_pause")
+          end
+          self.session_started = true
         end
       end
       return
@@ -134,34 +135,12 @@ class SonosRemote
       end
       return
     end
-  end
-
-  def confirm_or_toggle()
-    if self.picker && size(self.playlists) > 0
-      self.send_playlist(self.playlists[self.playlist_index])
-      self.picker = false
-      self.picker_until = 0
-    else
-      self.send("play_pause")
+    if payload != "1" return end
+    if topic == self.device_root + "/state/buttons/right"
+      self.adjust_volume(self.step)
+    elif topic == self.device_root + "/state/buttons/left"
+      self.adjust_volume(-self.step)
     end
-    self.session_started = true
-  end
-
-  def on_button_event(btn, event)
-    if !self.active return true end
-    if btn == "select"
-      if event == "press" self.select_at = now_ms() end
-      if event == "release" && self.select_at >= 0
-        var held = now_ms() - self.select_at
-        self.select_at = -1
-        # Firmware synthesizes release when its 1-second hold ends the app.
-        if held < 900 self.confirm_or_toggle() end
-      end
-    elif event == "press" || event == "repeat"
-      if btn == "right" self.adjust_volume(self.step)
-      elif btn == "left" self.adjust_volume(-self.step) end
-    end
-    return true
   end
 
   def adjust_volume(delta)
@@ -180,17 +159,14 @@ class SonosRemote
   end
 
   def send(action)
-    if self.player == nil || self.player == "" return end
     mqtt.publish(self.root + "/command", json.dump({"action":action, "player_entity_id":self.player}))
   end
 
   def send_value(action, value)
-    if self.player == nil || self.player == "" return end
     mqtt.publish(self.root + "/command", json.dump({"action":action, "player_entity_id":self.player, "value":value}))
   end
 
   def send_playlist(item)
-    if self.player == nil || self.player == "" return end
     var content_id = item.find("mediaContentId")
     var content_type = item.find("mediaContentType")
     if content_id == nil || content_id == "" return end
@@ -219,11 +195,9 @@ class SonosRemote
       self.playing = payload == "playing"
     elif topic == self.root + "/state/volume"
       var observed = num(payload)
-      if observed != nil && observed >= 0 && observed <= 100
-        if now_ms() >= self.pending_until
-          self.volume = int(observed)
-          self.label = str(self.volume) + "%"
-        end
+      if observed != nil
+        if observed == self.volume self.pending_until = 0 end
+        if now_ms() >= self.pending_until self.volume = int(observed) end
       end
     elif topic == self.root + "/state/player_name"
       if self.artist == "SONOS" && payload != ""
@@ -278,58 +252,61 @@ class SonosRemote
   def load_cover(payload)
     self.cover = []
     if payload == "" return end
-    try
-      var data = json.load(payload)
-      if !isinstance(data, map) return end
-      if data.find("width") != 16 || data.find("height") != 16 return end
-      var pixels = data.find("pixels")
-      if !isinstance(pixels, list) || size(pixels) != 256 return end
-      for value : pixels
-        if type(value) != "int" || value < 0 || value > 0xFFFFFF return end
-      end
-      self.cover = pixels
-    except ..
-      log("Sonos Remote: invalid artwork ignored")
-    end
+    var data = json.load(payload)
+    if !isinstance(data, map) return end
+    if data.find("width") != 16 || data.find("height") != 16 return end
+    var pixels = data.find("pixels")
+    if !isinstance(pixels, list) || size(pixels) != 256 return end
+    self.cover = pixels
   end
 
   def loop()
-    if !self.active return end
-    var now = now_ms()
-    if self.picker && self.picker_until != 0 && now >= self.picker_until
+    if self.active && self.picker && self.picker_until != 0 && now_ms() >= self.picker_until
       self.picker = false
       self.picker_until = 0
     end
-    if now - self.last_refresh >= 2500
+    if self.active && (self.last_state == 0 || now_ms() - self.last_state > 2500)
       self.send("refresh")
-      self.last_refresh = now
+      self.last_state = now_ms()
     end
-    var alive = self.last_state == 0 ? self.entered_at : self.last_state
-    if now - alive > 65000
-      log("Sonos Remote: Home Assistant offline, ending session")
-      self.exit_mode()
+    if self.last_state != 0 && now_ms() - self.last_state > 65000
+      self.title = "Home Assistant offline"
+      self.last_state = 0
     end
+  end
+
+  def should_show()
+    # Global MQTT input enters via enter_mode() and rotation.show().
+    # Native on-demand input is a separate upstream integration task.
+    return self.active
   end
 
   def on_show()
-    # @ondemand owns carousel suspension and unloads this app on exit.
-    if !self.active self.enter_mode() end
+    if !self.active return end
+    rotation.pause()
   end
 
   def on_hide()
-    self.pressed_at = -1
-    self.select_at = -1
+    self.pressed_at = 0
     self.long_handled = false
+    if self.active log("Sonos Remote: control off") end
     settings.set("blockNavigation", false)
+    rotation.resume()
     self.active = false
     self.osd_until = 0
-    self.pending_until = 0
     self.picker = false
     self.picker_until = 0
   end
 
   def exit_mode()
-    # Native rotation.next ends an on-demand session and restores the carousel.
+    log("Sonos Remote: control off")
+    self.active = false
+    self.session_started = false
+    self.pressed_at = 0
+    self.picker = false
+    self.picker_until = 0
+    settings.set("blockNavigation", false)
+    rotation.resume()
     rotation.next()
   end
 
@@ -337,21 +314,6 @@ class SonosRemote
     clear()
     if height() < 16
       scroll_text(1, 6, width() - 2, self.title, 0xFFFFFF)
-      return
-    end
-    if self.active && now_ms() < self.osd_until
-      rect_fill(1, 6, 3, 5, 0x38BDF8)
-      line(4, 6, 7, 3, 0x2563EB)
-      line(7, 3, 7, 12, 0x2563EB)
-      line(7, 12, 4, 10, 0x2563EB)
-      var phase = (now_ms() / 140) % 3
-      line(9, 6-phase, 9, 9+phase, 0x35E6B4)
-      line(11, 4+phase, 11, 11-phase, 0xF7C948)
-      line(13, 6-phase, 13, 9+phase, 0xFF45A4)
-      var osd_x = 17
-      var osd_w = width() - osd_x
-      text(osd_x + (osd_w - text_ink_width("SONOS")) / 2, 5, "SONOS", 0xFFFFFF)
-      text(osd_x + (osd_w - text_ink_width(self.label)) / 2, 14, self.label, 0xFFFFFF)
       return
     end
     if self.active && self.picker && size(self.playlists) > 0
@@ -373,6 +335,21 @@ class SonosRemote
       else
         scroll_text(body_x, 14, body_w, name, 0xFFFFFF)
       end
+      return
+    end
+    if self.active && now_ms() < self.osd_until
+      rect_fill(1, 6, 3, 5, 0x38BDF8)
+      line(4, 6, 7, 3, 0x2563EB)
+      line(7, 3, 7, 12, 0x2563EB)
+      line(7, 12, 4, 10, 0x2563EB)
+      var phase = (now_ms() / 140) % 3
+      line(9, 6-phase, 9, 9+phase, 0x35E6B4)
+      line(11, 4+phase, 11, 11-phase, 0xF7C948)
+      line(13, 6-phase, 13, 9+phase, 0xFF45A4)
+      var osd_x = 17
+      var osd_w = width() - osd_x
+      text(osd_x + (osd_w - text_ink_width("SONOS")) / 2, 5, "SONOS", 0xFFFFFF)
+      text(osd_x + (osd_w - text_ink_width(self.label)) / 2, 14, self.label, 0xFFFFFF)
       return
     end
     if size(self.cover) == 256

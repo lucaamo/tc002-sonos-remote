@@ -16,4 +16,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run contract and privacy checks
-        run: python -m unittest discover -s tests -v
+        run: |
+          pip install -r requirements-dev.txt
+          python -m unittest discover -s tests -v

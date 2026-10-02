@@ -1,0 +1,170 @@
+blueprint:
+  name: AWTRIX NG Sonos Remote
+  description: >-
+    Commands and retained metadata for the Sonos Remote Berry app. Requires
+    Home Assistant MQTT and Sonos integrations; no TC002 AWTRIX Bridge add-on.
+    Use one automation and one unique topic root per remote. Configure the same
+    entity and root in Berry. Artwork conversion is optional and not provided
+    by this blueprint. Commands must be published with retain=false.
+  domain: automation
+  author: Luca + Codex
+  source_url: https://github.com/lucaamo/tc002-sonos-remote/blob/main/home-assistant/sonos_remote.yaml
+  homeassistant:
+    min_version: '2024.10.0'
+  input:
+    player:
+      name: Sonos player
+      selector:
+        entity:
+          filter:
+            - domain: media_player
+              integration: sonos
+    mqtt_root:
+      name: MQTT topic root
+      description: Match Berry's root. No trailing slash, + or #. Unique per remote.
+      default: tc002/sonos_remote/v2
+      selector:
+        text:
+    clear_artwork:
+      name: Use built-in icon instead of external artwork
+      description: >-
+        Leave enabled for a standalone installation. Disable only when a
+        separate publisher supplies 16x16 RGB artwork on root/state/cover.
+      default: true
+      selector:
+        boolean:
+
+mode: queued
+max: 30
+max_exceeded: warning
+trace:
+  stored_traces: 20
+trigger_variables:
+  topic_root: !input mqtt_root
+triggers:
+  - trigger: mqtt
+    topic: '{{ topic_root }}/command'
+    id: command
+  - trigger: state
+    entity_id: !input player
+    id: state
+  - trigger: homeassistant
+    event: start
+    id: startup
+  - trigger: time_pattern
+    seconds: /30
+    id: heartbeat
+variables:
+  player: !input player
+  topic_root: !input mqtt_root
+  clear_artwork: !input clear_artwork
+actions:
+  - variables:
+      cmd: >-
+        {{ trigger.payload | from_json({})
+           if trigger is defined and trigger.id == 'command' else {} }}
+      is_command: '{{ trigger is defined and trigger.id == "command" }}'
+      valid_root: >-
+        {{ topic_root is string and 0 < topic_root | length <= 96
+           and not topic_root.endswith('/') and '+' not in topic_root
+           and '#' not in topic_root and '\n' not in topic_root }}
+  # A template is necessary here to validate the external JSON protocol,
+  # rather than for a state check that could use a native condition.
+  - condition: template
+    value_template: '{{ valid_root }}'
+  - variables:
+      command_action: '{{ cmd.get("action", "") if cmd is mapping else "" }}'
+      valid_command: >-
+        {% set c = cmd if cmd is mapping else {} %}
+        {% set a = c.get('action', '') %}
+        {% set v = c.get('value') %}
+        {% set content = c.get('media_content_id') %}
+        {% set kind = c.get('media_content_type') %}
+        {{ c.get('player_entity_id') == player and
+           (a in ['refresh', 'play_pause', 'next', 'previous'] or
+            (a == 'volume' and v is number and v is not boolean and 0 <= v <= 100) or
+            (a == 'delta' and v is number and v is not boolean and -25 <= v <= 25) or
+            (a == 'play_media' and content is string and 0 < content | length <= 768
+             and kind is string and 0 < kind | length <= 64)) }}
+  - condition: template
+    value_template: '{{ not is_command or valid_command }}'
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: '{{ is_command and command_action != "refresh" }}'
+          - condition: not
+            conditions:
+              - condition: state
+                entity_id: !input player
+                state:
+                  - unavailable
+                  - unknown
+        sequence:
+          - choose:
+              - conditions: '{{ command_action == "play_pause" }}'
+                sequence:
+                  - action: media_player.media_play_pause
+                    target:
+                      entity_id: !input player
+              - conditions: '{{ command_action == "next" }}'
+                sequence:
+                  - action: media_player.media_next_track
+                    target:
+                      entity_id: !input player
+              - conditions: '{{ command_action == "previous" }}'
+                sequence:
+                  - action: media_player.media_previous_track
+                    target:
+                      entity_id: !input player
+              - conditions: '{{ command_action in ["volume", "delta"] }}'
+                sequence:
+                  - variables:
+                      current_volume: '{{ state_attr(player, "volume_level") }}'
+                      target_volume: >-
+                        {{ cmd.value / 100 if command_action == 'volume' else
+                           ([0, [1, current_volume + cmd.value / 100] | min] | max
+                            if current_volume is number else none) }}
+                  - condition: template
+                    value_template: '{{ target_volume is number }}'
+                  - action: media_player.volume_set
+                    target:
+                      entity_id: !input player
+                    data:
+                      volume_level: '{{ target_volume }}'
+              - conditions: '{{ command_action == "play_media" }}'
+                sequence:
+                  - action: media_player.play_media
+                    target:
+                      entity_id: !input player
+                    data:
+                      media_content_id: '{{ cmd.media_content_id }}'
+                      media_content_type: '{{ cmd.media_content_type }}'
+  # Read state at execution time, not trigger time. A queued old state event
+  # must never publish its old volume after a newer command.
+  - variables:
+      metadata: >-
+        {% set vol = state_attr(player, 'volume_level') %}
+        {{ {'artist': state_attr(player, 'media_artist') or '',
+            'title': state_attr(player, 'media_title') or '',
+            'playing': states(player),
+            'player_name': state_attr(player, 'friendly_name') or player,
+            'volume': ((vol * 100) | round(0) | int | string) if vol is number else '',
+            'error': 'Sonos unavailable' if states(player) in ['unknown', 'unavailable'] else '',
+            'heartbeat': now().isoformat()} }}
+  - repeat:
+      for_each: '{{ metadata.items() | list }}'
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: '{{ topic_root }}/state/{{ repeat.item[0] }}'
+            payload: '{{ repeat.item[1] }}'
+            retain: true
+  - if:
+      - condition: template
+        value_template: '{{ clear_artwork }}'
+    then:
+      - action: mqtt.publish
+        data:
+          topic: '{{ topic_root }}/state/cover'
+          payload: ''
+          retain: true
