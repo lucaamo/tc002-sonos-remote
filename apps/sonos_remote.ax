@@ -1,6 +1,6 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 3.0
+# @version 3.0.1
 # @ondemand
 # @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the Home Assistant blueprint MQTT root"
 # @config device_root text "AWTRIX MQTT topic prefix" default="" maxlen=96 help="Copy System > MQTT > Topic prefix from your TC002"
@@ -22,7 +22,7 @@ import sonos_artist_names
 class SonosRemote
   var root, device_root, player, step, long_ms, picker_ms, icon_name, accent
   var title, artist, playing, volume, label, artist_done, artist_rest, header_scroll
-  var active, session_started, pressed_at, long_handled, osd_until, pending_until, last_state, last_refresh, entered_at, select_at
+  var active, exit_pending, session_started, pressed_at, long_handled, osd_until, pending_until, last_state, last_refresh, entered_at, select_at
   var playlists, picker, playlist_index, picker_until
   var cover
 
@@ -47,6 +47,7 @@ class SonosRemote
     self.volume = -1
     self.label = "--%"
     self.active = false
+    self.exit_pending = false
     self.session_started = false
     self.pressed_at = -1
     self.long_handled = false
@@ -84,6 +85,7 @@ class SonosRemote
   def enter_mode()
     self.restart_artist()
     self.active = true
+    self.exit_pending = false
     self.session_started = false
     self.osd_until = 0
     self.playlist_index = 0
@@ -97,6 +99,7 @@ class SonosRemote
   end
 
   def on_control(topic, payload)
+    if self.exit_pending return end
     var knob_button = self.device_root + "/state/buttons/knob"
     if topic == knob_button
       if payload == "1"
@@ -148,7 +151,7 @@ class SonosRemote
   end
 
   def on_button_event(btn, event)
-    if !self.active return true end
+    if !self.active || self.exit_pending return true end
     if btn == "select"
       if event == "press" self.select_at = now_ms() end
       if event == "release" && self.select_at >= 0
@@ -296,6 +299,14 @@ class SonosRemote
   def loop()
     if !self.active return end
     var now = now_ms()
+    if self.exit_pending
+      # QoS 0 may lose a command; retry until native on_hide unloads us.
+      if now - self.last_refresh >= 2500
+        self.last_refresh = now
+        mqtt.publish(self.device_root + "/cmd/apps/next", "", false)
+      end
+      return
+    end
     if self.picker && self.picker_until != 0 && now >= self.picker_until
       self.picker = false
       self.picker_until = 0
@@ -322,6 +333,7 @@ class SonosRemote
     self.long_handled = false
     settings.set("blockNavigation", false)
     self.active = false
+    self.exit_pending = false
     self.osd_until = 0
     self.pending_until = 0
     self.picker = false
@@ -329,8 +341,13 @@ class SonosRemote
   end
 
   def exit_mode()
-    # Native rotation.next ends an on-demand session and restores the carousel.
-    rotation.next()
+    if !self.active || self.exit_pending return end
+    # Beta 1.1.5 rotation.next() relaunches the on-demand script. The native
+    # MQTT command follows the working HTTP next path and unloads it safely.
+    self.exit_pending = true
+    self.pressed_at = -1
+    self.last_refresh = now_ms()
+    mqtt.publish(self.device_root + "/cmd/apps/next", "", false)
   end
 
   def draw()

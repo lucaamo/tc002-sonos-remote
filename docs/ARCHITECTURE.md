@@ -39,10 +39,18 @@ of left/right/select. Knob button edges distinguish short press from exit hold;
 rotary `turn` direction either selects a playlist or requests next/previous.
 `blockNavigation=true` suppresses the local knob brightness/volume panel and
 Assist path. `on_hide()` resets held presses, timers and navigation blocking.
-`rotation.next()` asks the native framework to end the session and advance.
-API next/previous, showing another app, saving settings and unloading also end
-it. A missing backend heartbeat ends the session after 65 seconds. A backend
-refresh request does not fabricate a received heartbeat.
+`exit_mode()` publishes a non-retained empty payload to the clock's native
+`<device_root>/cmd/apps/next` command. On beta 1.1.5 `rotation.next()` inside
+the on-demand callback reopened Sonos Remote; native HTTP/MQTT next correctly
+unloads it. This distinction must be checked on real firmware, not replaced by
+a mock that assumes all rotation calls end a session.
+
+Pending exit consumes subsequent inputs and retries at most once per 2.5
+seconds until native `on_hide()` runs. API next/previous, showing another app,
+saving settings and unloading also end it. A missing backend heartbeat requests
+the same exit after 65 seconds. If MQTT itself is unavailable, use the firmware's
+local top-select hold; reconnect allows the pending exit request to complete.
+A backend refresh request does not fabricate a received heartbeat.
 
 Entry by global knob hold belongs only to the compatibility v2 app. It is not
 available in the native v3 adapter because inactive on-demand scripts do not

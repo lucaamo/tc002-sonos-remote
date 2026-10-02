@@ -26,6 +26,17 @@ def run(base, topic_root, player, device_root):
     module=(ROOT/'apps/sonos_artist_names.ax').read_text().replace('sonos_artist_names',module_name)
     app=(ROOT/'apps/sonos_remote.ax').read_text().replace('sonos_artist_names',module_name)
     app=app.replace('    self.last_state = now_ms()', '    shared.set("rx", now_ms())\n    if topic == self.root + "/state/title" shared.set("title", payload) end\n    if topic == self.root + "/state/volume" shared.set("volume", payload) end\n    self.last_state = now_ms()')
+    settings=request('GET','settings')
+    dwell=settings.get('appDurationMs',7000)/1000+1
+    if dwell>50: raise RuntimeError('Carousel dwell exceeds bounded smoke-test wait')
+    # Exercise the production press/release handler and its real native MQTT
+    # exit. An HTTP-only exit test cannot catch a broken Berry exit_mode().
+    press_ms=int((dwell+2)*1000)
+    app=app.replace('    self.enter_mode()\n  end\n\n  def enter_mode()',
+        '    self.enter_mode()\n'
+        f'    timer.after({press_ms}, / -> self.on_control(self.device_root + "/state/buttons/knob", "1"))\n'
+        f'    timer.after({press_ms+2200}, / -> self.on_control(self.device_root + "/state/buttons/knob", "0"))\n'
+        '  end\n\n  def enter_mode()')
     installed=[]
     report={'firmware':request('GET','device')['version'],'checks':[]}
     def check(condition,label):
@@ -46,6 +57,7 @@ def run(base, topic_root, player, device_root):
         row=next(a for a in request('GET','apps') if a['name']==app_name)
         check(row.get('ondemand') is True,'official on-demand registration')
         request('PUT','apps/active',{'name':app_name,'fast':True})
+        launched=time.monotonic()
         deadline=time.monotonic()+8
         while time.monotonic()<deadline:
             row=next(a for a in request('GET','apps') if a['name']==app_name)
@@ -61,12 +73,13 @@ def run(base, topic_root, player, device_root):
         check(bool(title),'metadata received from standalone Home Assistant blueprint')
         settings=request('GET','settings')
         check(settings.get('blockNavigation') is True,'local navigation blocked during remote')
-        dwell=settings.get('appDurationMs',7000)/1000+1
-        if dwell>50: raise RuntimeError('Carousel dwell exceeds bounded smoke-test wait')
-        time.sleep(dwell)
+        time.sleep(max(0,launched+dwell-time.monotonic()))
         check(request('GET','device')['currentApp']==app_name,'native display ownership holds across carousel dwell')
-        request('POST','apps/next')
-        check(request('GET','device')['currentApp']!=app_name,'native exit restores another app')
+        deadline=launched+press_ms/1000+6
+        while time.monotonic()<deadline:
+            if request('GET','device')['currentApp']!=app_name: break
+            time.sleep(.2)
+        check(request('GET','device')['currentApp']!=app_name,'production knob hold handler exits through native MQTT')
         check(request('GET','settings').get('blockNavigation') is False,'native exit releases navigation')
         return report
     finally:

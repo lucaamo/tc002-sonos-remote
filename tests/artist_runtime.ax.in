@@ -44,10 +44,19 @@ def exercise()
   settings.set = def (key,value) navigation_blocked = value end
   var rotation = module("test_rotation")
   var exits = 0
-  rotation.next = def () exits += 1 end
+  rotation.next = def () raise "test_failed", "unsafe Berry exit used" end
   var mqtt = module("test_mqtt")
   var commands = []
-  mqtt.publish = def (topic,payload) commands.push(json.load(payload)) end
+  var exit_retained = nil
+  mqtt.publish = def (topic,payload,retain)
+    if topic == "test_clock/cmd/apps/next"
+      exits += 1
+      exit_retained = retain
+      check(payload == "", "native next payload")
+    else
+      commands.push(json.load(payload))
+    end
+  end
 
 __CLASS__
 
@@ -155,6 +164,32 @@ __CLASS__
   pixels[0] = -1
   app.load_cover(json.dump({"width":16,"height":16,"pixels":pixels}))
   check(size(app.cover)==0, "invalid RGB pixel rejected")
+  commands.clear()
+  app.on_control("test_clock/state/buttons/knob", "1")
+  clock += app.long_ms - 1
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(exits==0 && commands[-1]["action"]=="play_pause", "below hold boundary remains short press")
+  commands.clear()
+  app.on_control("test_clock/state/buttons/knob", "1")
+  clock += app.long_ms
+  app.on_control("test_clock/state/buttons/knob", "0")
+  check(exits==1 && app.exit_pending && size(commands)==0, "hold boundary requests native exit without playback")
+  check(exit_retained==false, "exit command is never retained")
+  app.exit_mode()
+  app.on_control("test_clock/state/buttons/knob", "0")
+  app.on_control("test_clock/event/knob", "{\"turn\":1}")
+  app.on_button_event("right", "press")
+  check(exits==1 && size(commands)==0, "pending exit suppresses duplicate exit and media actions")
+  clock += 2499
+  app.loop()
+  check(exits==1, "exit retry bounded")
+  clock += 1
+  app.loop()
+  check(exits==2 && size(commands)==0, "lost exit retries without refresh or media commands")
+  app.on_hide()
+  check(!app.exit_pending && !navigation_blocked, "native hide clears exit state and navigation")
+  app.on_show()
+  check(app.active && !app.exit_pending, "fresh session can be used after exit")
   app.last_state = clock
   var received = app.last_state
   clock += 3000
@@ -162,13 +197,13 @@ __CLASS__
   check(app.last_state==received && commands[-1]["action"]=="refresh", "refresh never fabricates backend heartbeat")
   clock += 65001
   app.loop()
-  check(exits==1, "offline session ends via native navigation")
+  check(exits==3 && app.exit_pending, "offline backend requests same native exit")
   app.on_hide()
   check(!app.active && !navigation_blocked && app.select_at==-1, "hide releases navigation and press state")
   commands.clear()
   app.on_control("test_clock/event/knob", "{\"turn\":1}")
   check(size(commands)==0, "inactive app never handles rotary")
-  shared.set("sonos_artist_regression", "46 runtime checks passed")
+  shared.set("sonos_artist_regression", "54 runtime checks passed")
 end
 
 class Regression

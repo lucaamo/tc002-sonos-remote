@@ -66,7 +66,7 @@ class ArtistRuntimeTests(unittest.TestCase):
                 self.assertIsNone(apps["sonos_artist_regression"].get("error"))
                 checks = [item for item in request("GET", "scripts/shared")
                           if item.get("owner") == "sonos_artist_regression"]
-                if any(item.get("value") == "46 runtime checks passed" for item in checks):
+                if any(item.get("value") == "54 runtime checks passed" for item in checks):
                     break
                 time.sleep(0.1)
             else:

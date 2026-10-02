@@ -1,6 +1,6 @@
 # Sonos Remote for AWTRIX NG on Ulanzi TC002
 
-A reusable Berry controller for one Home Assistant Sonos player. Version 3.0
+A reusable Berry controller for one Home Assistant Sonos player. Version 3.0.1
 uses AWTRIX NG's official **on-demand** framework and a Home Assistant blueprint.
 No TC002 AWTRIX Bridge add-on, private firmware patch, Home Assistant token on
 the clock, or author's network configuration is required.
@@ -33,6 +33,11 @@ only through MQTT. The app subscribes to the knob only during an on-demand
 session. It uses `blockNavigation` then to suppress the clock's local
 brightness/volume panel. Sonos volume and the TC002 speaker remain separate.
 No hidden global listener or firmware constant is required.
+
+On beta 1.1.5 the knob exit uses the clock's native MQTT `cmd/apps/next`
+command. `rotation.next()` inside this on-demand app reopened it during the
+physical trial. Knob exit therefore needs the broker connection; the firmware's
+top-select hold is the local exit when MQTT is unavailable.
 
 The old global MQTT entry prototype is preserved in
 [`compatibility/sonos_remote_mqtt_v2.ax`](compatibility/sonos_remote_mqtt_v2.ax).
@@ -93,7 +98,7 @@ Configure the app using its gear on **Apps**:
 | Setting | Meaning |
 | --- | --- |
 | MQTT topic root | Match the blueprint's root; configurable independently per clock |
-| AWTRIX MQTT topic prefix | Copy System → MQTT → Topic prefix; used for knob input only |
+| AWTRIX MQTT topic prefix | Copy System → MQTT → Topic prefix; used for knob input and native exit |
 | Sonos player entity | Exactly the entity selected in the blueprint |
 | Volume step (%) | 1–25 percentage points per button press |
 | Knob exit hold (ms) | Active-session knob exit; does not change firmware select/menu timing |

@@ -1,6 +1,6 @@
 # Official-framework contribution readiness
 
-Version 3.0 supplies a reusable on-demand Berry app and a standalone Home
+Version 3.0.1 supplies a reusable on-demand Berry app and a standalone Home
 Assistant blueprint. All entity choices, clock prefixes, playlist entries and
 artist aliases are settings. Source defaults contain no author's devices,
 credentials, playlist ids or private backups.
@@ -26,16 +26,19 @@ service calls, display ownership and remaining physical acceptance.
 
 The official beta 1.1.5 docs expose `@ondemand` and local top-button events.
 They explicitly do not route the TC002 knob into Berry hooks. This adapter
-therefore retains MQTT for **active-session knob input only**, and sets
+therefore retains MQTT for **active-session knob input and app-requested exit**, and sets
 `blockNavigation` to suppress the stock knob overlay while controlling Sonos.
-Native select-hold still exits. Inactive on-demand scripts are unloaded.
+Native select-hold still exits without the broker. Inactive on-demand scripts
+are unloaded. During physical testing, Berry `rotation.next()` reopened the
+on-demand app on beta 1.1.5; native HTTP/MQTT next unloaded it correctly. The
+app now uses the non-retained native MQTT command and tests its actual path.
 
 Native entry is firmware menu → Scripts → Sonos Remote, from any carousel
 page, or the web UI's Start action. The previous direct global knob hold is
 not available through the official API and is not promised in v3.0.
 
-A generic native rotary hook and configurable global app shortcut would remove
-this remaining MQTT input dependency. This is a concrete design question for
+A generic native rotary hook, configurable global app shortcut and explicit
+local script-exit API would remove these remaining MQTT dependencies. These are concrete design questions for
 Blueforcer, not a reason to introduce another Sonos-specific firmware patch.
 The old MQTT controller and pinned patch remain historical compatibility files.
 
@@ -45,9 +48,11 @@ The old MQTT controller and pinned patch remain historical compatibility files.
 > events. We supply a standalone HA blueprint; player, MQTT roots, playlists and
 > artist aliases are configuration. A fresh namespace with another Sonos player
 > passes runtime, metadata, frame and carousel-recovery tests on beta 1.1.5.
-> The TC002 knob still requires active-session MQTT because it is not exposed
-> to scripts locally. Would a generic rotary hook and optional configurable
-> global shortcut fit your framework? We can adapt the example and test it.
+> Physical playlist/playback/volume controls pass. The TC002 knob still requires
+> active-session MQTT because it is not exposed to scripts locally. We also
+> reproduced rotation.next() reopening an on-demand app; native MQTT next exits
+> correctly. Would a generic rotary hook, local exit API and optional global
+> shortcut fit your framework? We can provide the reproduction and test changes.
 
 The maintainer decides catalog inclusion or official bundling. No new reply,
 Discord message or upstream PR is sent by these implementation steps.
