@@ -1,6 +1,6 @@
 # Test record and release checks
 
-## Hub packaging preparation — 2026-10-03
+## Hub publication and installation — 2026-10-03
 
 Version 3.3.1 adds author, panel and module dependency metadata and an empty
 optional fallback-icon default. Control and artwork logic is unchanged from
@@ -11,9 +11,31 @@ TC002 beta 1.1.6 and passed all 106 actual Berry runtime assertions.
 Three original preview images were prepared with example data. The main
 preview uses the actual class renderer in a temporary, inert on-demand app;
 it sends no player commands. The production app and module sources and
-settings were compared before and after and were identical. This is not yet
-an end-to-end Hub dependency-install test: real module Hub IDs are assigned
-only when their flows are published.
+settings were compared before and after and were identical.
+
+The three flows were then published as lucaamo. Sonos Remote declares the
+two real module Hub IDs. **Send to AWTRIX** updated the existing app to 3.3.1.
+For the missing-dependency trial, the two backed-up Sonos modules were
+temporarily removed, with the on-demand session stopped. The main Hub page
+identified both missing modules; **Install with dependencies** downloaded
+and installed both modules and the main app successfully on official 1.1.6.
+All three installed sources matched the repository code after stripping the
+generated `@hub` origin line and normalizing trailing newlines. The origin
+IDs matched their three public flow pages.
+
+New module defaults were empty. Existing playlist and artist-rule values
+were restored from the private backup and compared field by field. The main
+app's settings were preserved by the update. All apps reported no errors;
+the installed app set, enabled states and carousel positions were unchanged.
+CasaViva, sensor carousel, Weather and Aquarium sources/settings were identical.
+Sonos Remote was reopened without sending music or volume commands.
+
+The clock-editor **Install all** prompt also recognized both dependency IDs,
+but its download needed a Hub connection key in that browser; it installed
+nothing. The successful dependency trial used the signed-in Hub page instead.
+No connection key was saved. This verifies installation of missing modules
+and updating an existing main app, not a factory-reset clock or a new user's
+Home Assistant onboarding.
 
 ## Native URL artwork on official beta 1.1.6 — 2026-10-03
 

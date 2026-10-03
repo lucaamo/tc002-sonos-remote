@@ -46,6 +46,7 @@ class PublicReleaseTests(unittest.TestCase):
         module_imports = set(re.findall(r"^import (sonos_\w+)$", APP, re.M))
         self.assertEqual({name for name, hub_id in required}, module_imports)
         for name, hub_id in required:
+            self.assertRegex(hub_id or "", r"^[A-Za-z0-9]{12}$")
             source = (ROOT / "apps" / (name + ".ax")).read_text(encoding="utf-8")
             self.assertRegex(source, rf"^# @module {name}\n")
             self.assertIn("# @author lucaamo", source)

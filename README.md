@@ -11,9 +11,11 @@ Other firmware versions and TC001 are not verified. See
 [acceptance results and remaining checks](docs/TESTING.md) and
 [upstream readiness](docs/UPSTREAM_READINESS.md).
 
-For the clock app and module dependency packaging, see
-[AWTRIX Hub distribution](docs/HUB_DISTRIBUTION.md). Home Assistant setup is
-separate from installing the Berry files on the clock.
+Install [Sonos Remote from the AWTRIX Hub](https://awtrix.de/flow/aEY8TgwXGejR).
+Choose **Install with dependencies** to download the two settings modules too.
+Use `sonos_remote` as the script name when updating an existing installation.
+See [AWTRIX Hub distribution](docs/HUB_DISTRIBUTION.md) for the module links
+and setup steps. Home Assistant setup is separate from the clock installation.
 
 Official beta 1.1.6 downloads and resizes artwork URLs itself. The older
 [native artwork conversion candidate](native-artwork/README.md) is retained
