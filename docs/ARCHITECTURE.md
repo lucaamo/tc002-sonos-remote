@@ -11,7 +11,8 @@ flowchart LR
   A --> S[Sonos integration]
   M[Artist-name settings module] --> B
   P[Ten-playlist settings module] --> B
-  O[Optional image converter] -->|16x16 RGB| B
+  B -->|artwork URL| I[Native firmware image cache and resize]
+  I -->|16x16 image| B
 ```
 
 `apps/sonos_remote.ax` is an on-demand tool; the firmware loads it only when
@@ -148,17 +149,27 @@ Long artist names use one full pass then a centred explicit fitting alias.
 Unconfigured groups or oversized aliases continue scrolling. Duplicate artist
 reports do not reset the completed pass. A changed artist/session toggles the
 700/701 ms scroll hold option because the firmware's scroll bank keys state by
-geometry/options, not text identity. The name module parses four bounded,
-one global rule list and optional global overrides, both empty by default.
+geometry/options, not text identity. The name module reads one global rule
+list and optional global overrides, both empty by default.
 Module 2.0.0 reads `rules` then `overrides`; it has no playlist-specific keys.
 A `*` override cancels any abbreviation for that artist. No artist or playlist
 catalogue is required. Migrating 1.x settings is explicit, documented in the README.
 
-Artwork payloads contain width=16, height=16, and exactly 256 integer RGB888
-pixels (0..0xFFFFFF). Malformed JSON and invalid pixels are caught and rejected.
-The blueprint's default clears artwork and uses built-in shapes or an optional
-local icon. Protected image download/crop/resize belongs to an optional separate
-publisher; it is not performed by this blueprint. The app keeps pixels in RAM.
+Artwork payloads contain width=16, height=16 and `image`. On TC002 beta 1.1.6,
+an HTTP(S) URL (at most 2048 characters, no whitespace) is passed directly to
+native `icon()`. The firmware owns downloading, JPEG/PNG resizing and caching.
+The blueprint can resolve a relative `entity_picture` using a configurable HA
+base URL and publish this URL; it does not download or convert the picture.
+An empty or unavailable picture clears stale artwork. While a download is
+pending or cannot decode, the app draws its optional icon or built-in meter.
+
+Static 16×16 GIF data URIs (at most 4096 characters) and the earlier payload
+with exactly 256 integer RGB888 pixels (0..0xFFFFFF) remain accepted. Inline
+JPEGs are rejected because their firmware limits differ from URL pictures.
+The fallback-only blueprint default preserves older installations. With
+fallback-only disabled and an empty base URL, the blueprint leaves an existing
+external artwork publisher alone. With a base URL, it becomes the only artwork
+publisher; remove any previous converter to prevent competing updates.
 
 ## HTTP and settings
 
@@ -178,7 +189,9 @@ neutral. Home Assistant blueprint selectors collect the Sonos entity and root;
 HA validates the automation schema, and runtime protocol validation checks
 incoming commands. Module/app saves restart dependent code; native lifecycle
 releases input ownership. The remote uses eight config slots and the playlist
-module ten, within the firmware's twelve-field limit per script. During a 3.1.0
+module ten. TC002 beta 1.1.5 accepts at least 30 declared fields, as verified
+with an isolated module, but the current web UI has no column/group metadata.
+During a 3.1.0
 upgrade, read/back up the four old app playlist fields and save them in the new
 module before updating the app; verify all eight remaining app values afterward.
 Never read module settings through the importing app's `store` identity.

@@ -1,11 +1,13 @@
 # Official-framework contribution readiness
 
-Version 3.2.2 supplies a reusable on-demand Berry app and a standalone Home
+Version 3.3.1 supplies a reusable on-demand Berry app and a standalone Home
 Assistant blueprint. All entity choices, clock prefixes, playlist entries and
 artist aliases are settings. Source defaults contain no author's devices,
 credentials, playlist ids or private backups.
 Ten playlist slots are collected in the Sonos Playlists module, within the
 firmware's config limits; the clock firmware and HA protocol are unchanged.
+The 3.3.1 packaging adds author/display/dependency metadata and uses the built-in
+fallback meter by default. Existing settings and control logic are unchanged.
 
 ## Completed implementation work
 
@@ -14,7 +16,9 @@ firmware's config limits; the clock firmware and HA protocol are unchanged.
    pause/resume calls and no hidden global input subscriber.
 2. **Home Assistant without the TC002 add-on:** one blueprint selects a Sonos
    entity and unique MQTT root, validates commands, invokes fixed services and
-   publishes retained metadata. Album conversion remains optional and separate.
+   publishes retained metadata. On official TC002 beta 1.1.6, it can also
+   publish an artwork URL for the firmware to download and resize to 16×16.
+   No separate album converter is required for that path.
 3. **Independent configuration on the available TC002:** temporary new app and
    module identities, empty settings, a different Sonos player and unique MQTT
    root have been tested with the standalone blueprint. Temporary scripts and
@@ -62,6 +66,11 @@ The maintainer decides catalog inclusion or official bundling. No new reply,
 Discord message or upstream PR is sent by these implementation steps.
 
 ## Native artwork candidate (2026-10-02)
+
+**Update, 2026-10-03:** official beta 1.1.6 supplies native URL pictures.
+Sonos Remote 3.3.0 uses this existing API, verified on the TC002 with full-size
+JPEG/PNG sources and a live Sonos proxy URL. The following C++ proposal is now
+historical; integrating it into the firmware is unnecessary for these covers.
 
 The [native conversion candidate](../native-artwork/README.md) supplies real
 host-executed C++ JPEG/PNG decoding, 10×10/16×16 resampling, byte/dimension/

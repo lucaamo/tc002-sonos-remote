@@ -1,6 +1,12 @@
 # @name Sonos Remote
 # @desc TC002 physical remote for one Home Assistant media player
-# @version 3.2.2
+# @author lucaamo
+# @version 3.3.1
+# @display 52x16
+# @requires sonos_artist_names
+# @requires sonos_playlists
+# License: PolyForm Noncommercial 1.0.0; https://github.com/lucaamo/tc002-sonos-remote/blob/main/LICENSE.md
+# Required Notice: Copyright © Stephan Mühl (Blueforcer) https://github.com/Blueforcer/awtrix-ng
 # @ondemand
 # @config root text "MQTT topic root" default="tc002/sonos_remote/v2" maxlen=96 help="Must match the Home Assistant blueprint MQTT root"
 # @config device_root text "AWTRIX MQTT topic prefix" default="" maxlen=96 help="Copy System > MQTT > Topic prefix from your TC002"
@@ -8,8 +14,8 @@
 # @config step number "Volume step (%)" default=5 min=1 max=25
 # @config long_ms number "Playlist picker hold (ms)" default=1200 min=600 max=3000 help="Hold and release the knob to open or cancel playlist selection"
 # @config picker_ms number "Playlist picker timeout (ms)" default=8000 min=3000 max=30000 step=1000
-# @config icon_name text "Music Meter icon name" default="sonos_music_meter" maxlen=64
-# @config accent color "Music icon colour" default=#35DCC4
+# @config icon_name text "Fallback icon name" default="" maxlen=64 help="Used when album artwork is unavailable; leave empty for the built-in meter"
+# @config accent color "Interface accent colour" default=#35DCC4 help="Colour for playlist arrows and the built-in fallback meter"
 
 import json
 import string
@@ -21,7 +27,7 @@ class SonosRemote
   var title, artist, playing, volume, label, artist_done, artist_rest, header_scroll
   var active, exit_pending, session_started, pressed_at, osd_until, pending_until, last_state, last_refresh, entered_at
   var playlists, picker, playlist_index, picker_until
-  var cover
+  var cover, cover_image
 
   def init()
     self.root = store.get("root")
@@ -58,6 +64,7 @@ class SonosRemote
     self.playlist_index = 0
     self.picker_until = 0
     self.cover = []
+    self.cover_image = nil
   end
 
   def setup()
@@ -279,11 +286,29 @@ class SonosRemote
 
   def load_cover(payload)
     self.cover = []
+    self.cover_image = nil
     if payload == "" return end
     try
       var data = json.load(payload)
       if !isinstance(data, map) return end
       if data.find("width") != 16 || data.find("height") != 16 return end
+      var image = data.find("image")
+      if image != nil
+        if type(image) != "string" return end
+        # TC002 beta 1.1.6 downloads and resizes URL JPEG/PNG artwork to 16x16.
+        # Inline JPEGs still have different limits; keep the verified GIF path.
+        var remote = string.find(image, "http://") == 0 || string.find(image, "https://") == 0
+        if remote
+          if size(image) > 2048 || re.search("^https?://[^/?# ]+", image) == nil return end
+          for whitespace : [" ", "\t", "\r", "\n"]
+            if string.find(image, whitespace) >= 0 return end
+          end
+        elif size(image) > 4096 || string.find(image, "data:image/gif;base64,") != 0
+          return
+        end
+        self.cover_image = image
+        return
+      end
       var pixels = data.find("pixels")
       if !isinstance(pixels, list) || size(pixels) != 256 return end
       for value : pixels
@@ -387,14 +412,16 @@ class SonosRemote
       end
       return
     end
-    if size(self.cover) == 256
+    var artwork_drawn = false
+    if self.cover_image != nil artwork_drawn = icon(self.cover_image, 0, 0) end
+    if !artwork_drawn && size(self.cover) == 256
       for cover_y : 0 .. 15
         for cover_x : 0 .. 15
           pixel(cover_x, cover_y, self.cover[cover_y * 16 + cover_x])
         end
       end
     # Optional local Music Meter; shapes are the portable fallback.
-    elif !icon(self.icon_name, 3, 3)
+    elif !artwork_drawn && !icon(self.icon_name, 3, 3)
       var beat = (now_ms() / 160) % 3
       rect_fill(4, 12-beat, 2, 3+beat, self.accent)
       rect_fill(7, 9+beat, 2, 6-beat, 0x38BDF8)

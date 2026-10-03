@@ -1,5 +1,9 @@
 # @module sonos_playlists
 # @name Sonos Playlists
+# @author lucaamo
+# @display 52x16
+# License: PolyForm Noncommercial 1.0.0; https://github.com/lucaamo/tc002-sonos-remote/blob/main/LICENSE.md
+# Required Notice: Copyright © Stephan Mühl (Blueforcer) https://github.com/Blueforcer/awtrix-ng
 # @desc Ten playlist or favourite slots for Sonos Remote
 # @version 1.0.0
 # @config playlist1 text "Playlist 1" default="" maxlen=768 help="Name|content id|content type; leave empty to skip"

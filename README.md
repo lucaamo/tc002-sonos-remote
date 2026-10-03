@@ -1,20 +1,23 @@
 # Sonos Remote for AWTRIX NG on Ulanzi TC002
 
-A reusable Berry controller for one Home Assistant Sonos player. Version 3.2.2
+A reusable Berry controller for one Home Assistant Sonos player. Version 3.3.1
 uses AWTRIX NG's official **on-demand** framework and a Home Assistant blueprint.
 No TC002 AWTRIX Bridge add-on, private firmware patch, Home Assistant token on
 the clock, or author's network configuration is required.
 
 This is a community example, not an app accepted or bundled by Blueforcer.
-Tested with official TC002 beta **AWTRIX NG 1.1.5** and Home Assistant **2026.9.4**.
+Tested with official TC002 beta **AWTRIX NG 1.1.6** and Home Assistant **2026.9.4**.
 Other firmware versions and TC001 are not verified. See
 [acceptance results and remaining checks](docs/TESTING.md) and
 [upstream readiness](docs/UPSTREAM_READINESS.md).
 
-A [native artwork conversion candidate](native-artwork/README.md) is available
-for maintainer review. Its C++ decoder and lifecycle coordinator are tested,
-but it is **not integrated into or installed on official beta 1.1.5**. It does
-not enable automatic cover download in the current Berry app.
+For the clock app and module dependency packaging, see
+[AWTRIX Hub distribution](docs/HUB_DISTRIBUTION.md). Home Assistant setup is
+separate from installing the Berry files on the clock.
+
+Official beta 1.1.6 downloads and resizes artwork URLs itself. The older
+[native artwork conversion candidate](native-artwork/README.md) is retained
+as a historical proposal; no firmware patch is needed for this artwork path.
 
 ## Controls and a beta limitation
 
@@ -64,7 +67,7 @@ Official API references: [on-demand lifecycle](https://ang.blueforcer.de/guides/
 
 ## Requirements
 
-- TC002 running official AWTRIX NG beta 1.1.5 with its on-demand API.
+- TC002 running official AWTRIX NG beta 1.1.6 with its on-demand API and URL pictures.
 - Home Assistant's MQTT and Sonos integrations; both clock and HA use the same broker.
 - One Sonos `media_player` entity available in Home Assistant.
 - Firmware input topics `<clock-prefix>/state/buttons/knob` and
@@ -73,13 +76,15 @@ Official API references: [on-demand lifecycle](https://ang.blueforcer.de/guides/
 
 ## Install Home Assistant
 
-1. Import [the blueprint](home-assistant/sonos_remote.yaml) in **Settings →
+1. [Import the blueprint into Home Assistant](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Flucaamo%2Ftc002-sonos-remote%2Fblob%2Fmain%2Fhome-assistant%2Fsonos_remote.yaml), or import [the blueprint file](home-assistant/sonos_remote.yaml) in **Settings →
    Automations & scenes → Blueprints**. Use the file's GitHub URL or copy it to
    `config/blueprints/automation/lucaamo/sonos_remote.yaml` and reload automations.
 2. Create an automation from **AWTRIX NG Sonos Remote**. Choose your Sonos player
    and a unique MQTT root, e.g. `clock_living_room/sonos_remote`.
-3. Leave **Use built-in icon instead of external artwork** enabled for a
-   standalone installation. Enable the automation.
+3. For album covers, disable **Use fallback icon instead of album artwork**
+   and set **Home Assistant URL for native album artwork** to an HTTP(S)
+   address reachable from the clock. Leave fallback-only enabled if covers
+   are not wanted. Enable the automation.
 4. Use the exact same entity and root in the Berry app. Each clock/player pair
    needs a separate automation and root. Do not use a root already owned by the
    older add-on: two responders can execute a command twice.
@@ -119,15 +124,18 @@ Configure the app using its gear on **Apps**:
 | Volume step (%) | 1–25 percentage points per button press |
 | Playlist picker hold (ms) | Knob hold threshold to open/cancel the picker; does not change firmware select/menu timing |
 | Playlist picker timeout (ms) | Picker closes without playing if no choice is made |
-| Music Meter icon name | Optional local fallback asset |
-| Music icon colour | Colour of the built-in animated fallback |
+| Fallback icon name | Optional local asset shown when artwork is missing or invalid; empty uses the built-in meter |
+| Interface accent colour | Colour for playlist arrows and the built-in fallback meter |
 
 Configure **Playlist 1–10** together in **Apps → Modules → Sonos Playlists →
 settings**. Each field is `Name|content id|content type`, empty by default.
 Empty or malformed entries are skipped; the picker follows numeric slot order
 and wraps between the last configured entry and the first. The module uses ten
-config fields and the app eight, within the firmware's twelve-field-per-script
-limit. No firmware change is needed.
+config fields and the app eight. The official TC002 beta 1.1.5 was also checked
+with a disposable module declaring 30 fields: all were accepted without warnings.
+The current `@config` UI has no grouping/column option, so three fields per
+playlist would occupy three separate rows. A horizontal editor requires an
+AWTRIX web UI extension. No firmware change is needed for the current format.
 
 Playlist examples (enter literal `|` separators):
 
@@ -194,16 +202,25 @@ state reception; native select-hold remains available throughout.
 
 ## Optional artwork
 
-The standalone blueprint does **not** fetch or resize cover art. The built-in
-animated equalizer works without any image dependency. A local LaMetric Music
-Meter `22046` asset is not included; no third-party artwork is redistributed.
+On official TC002 beta 1.1.6, the blueprint publishes the player's
+`entity_picture` URL on `<root>/state/cover`. Relative paths are resolved using
+the configured Home Assistant address. Sonos Remote passes that URL to native
+`icon()`; the firmware downloads, caches and resizes JPEG/PNG to 16×16.
+No external converter, long-lived Home Assistant token or per-pixel drawing
+is needed. A missing cover clears the previous image and shows the fallback.
 
-For artwork, supply an optional external publisher on `<root>/state/cover` and
-turn off the blueprint's icon-only option. Payload: `{"width":16,"height":16,
-"pixels":[...]}` with 256 RGB888 integers. Invalid or absent data uses the icon.
-The previous add-on's image converter is one possible separate publisher, but
-is not needed for media controls or the native framework. Protect image URLs
-and credentials on the HA side; send only pixels to the clock.
+URL payload: `{"width":16,"height":16,"image":"https://example.org/album.jpg"}`.
+URLs must be at most 2048 characters, have no whitespace, and be reachable
+from the clock. Self-signed HTTPS is unsupported. Keep your MQTT network
+private: proxy URLs can contain temporary artwork access tokens.
+
+The earlier static 16×16 GIF Base64 payload (at most 4096 characters) and
+256-element RGB888 `pixels` payload remain compatible. For an external
+publisher, leave the HA artwork URL empty and turn off fallback-only.
+Inline JPEG Base64 is still rejected because it has different size limits.
+The built-in animated equalizer works without image dependencies; the local
+LaMetric Music Meter `22046` asset is not included, and no third-party artwork
+is redistributed.
 
 ## Development
 

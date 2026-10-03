@@ -17,7 +17,7 @@ PATCH = (ROOT / "patches" / "tc002-v1.1.2-tc002.1-global-sonos-shortcut.patch").
 
 class PublicReleaseTests(unittest.TestCase):
     def test_berry_contract(self) -> None:
-        self.assertIn("# @version 3.2.2", APP)
+        self.assertIn("# @version 3.3.1", APP)
         self.assertIn('default="tc002/sonos_remote/v2"', APP)
         self.assertIn('"player_entity_id":self.player', APP)
         self.assertIn('"action":"play_media"', APP)
@@ -29,6 +29,7 @@ class PublicReleaseTests(unittest.TestCase):
 
     def test_new_install_has_no_personal_configuration(self) -> None:
         self.assertIn('# @config device_root text "AWTRIX MQTT topic prefix" default=""', APP)
+        self.assertIn('# @config icon_name text "Fallback icon name" default=""', APP)
         self.assertNotIn('default="tc002-sonos-ng"', APP)
         self.assertIn('if self.device_root != ""', APP)
         module = (ROOT / "apps/sonos_artist_names.ax").read_text(encoding="utf-8")
@@ -38,6 +39,18 @@ class PublicReleaseTests(unittest.TestCase):
         self.assertIn('# @config overrides text "Global rule overrides"', module)
         for key in ("relax", "estate", "hits", "nineties", "aliases"):
             self.assertNotRegex(module, rf"# @config {key} ")
+
+    def test_hub_dependencies_match_installed_module_names(self) -> None:
+        # A download of only the main file must identify both missing modules.
+        required = re.findall(r"^# @requires (\w+)(?: ([A-Za-z0-9]{12}))?$", APP, re.M)
+        module_imports = set(re.findall(r"^import (sonos_\w+)$", APP, re.M))
+        self.assertEqual({name for name, hub_id in required}, module_imports)
+        for name, hub_id in required:
+            source = (ROOT / "apps" / (name + ".ax")).read_text(encoding="utf-8")
+            self.assertRegex(source, rf"^# @module {name}\n")
+            self.assertIn("# @author lucaamo", source)
+        self.assertIn("# @display 52x16", APP)
+        self.assertIn("# @author lucaamo", APP)
 
     def test_exclusive_input_mapping(self) -> None:
         self.assertIn("# @ondemand", APP)
@@ -66,7 +79,7 @@ class PublicReleaseTests(unittest.TestCase):
         self.assertIn("self.picker_until = now_ms() + self.picker_ms", APP)
 
     def test_missing_optional_icon_has_fallback(self) -> None:
-        self.assertIn('if !icon(self.icon_name, 3, 3)', APP)
+        self.assertIn('!icon(self.icon_name, 3, 3)', APP)
         self.assertIn("rect_fill", APP)
         self.assertIn("not included", README)
 

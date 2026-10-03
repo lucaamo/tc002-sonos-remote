@@ -78,4 +78,32 @@ class BlueprintTests(unittest.TestCase):
             self.assertEqual(render(template,command_action='delta',current_volume=current,cmd={'value':delta}),expected)
         self.assertEqual(render(template,command_action='volume',current_volume=None,cmd={'value':20}),.2)
 
+    def test_native_artwork_resolves_proxy_and_preserves_absolute_url(self):
+        template=BP['actions'][-1]['choose'][1]['sequence'][0]['variables']['cover_url']
+        cases=[
+            ('/api/media_player_proxy/media_player.example?token=sample',
+             'http://ha.example:8123/api/media_player_proxy/media_player.example?token=sample'),
+            ('https://images.example/album.jpg?size=large', 'https://images.example/album.jpg?size=large'),
+            ('', ''), ('//another.example/album.jpg', ''),
+            ('file:///etc/image.jpg', ''), ('https://images.example/a b.jpg', ''),
+            ('https://images.example/a\nb.jpg', ''), ('https://images.example/a\tb.jpg', ''),
+            ('https://images.example/'+'x'*2050, ''),
+        ]
+        for picture,expected in cases:
+            with self.subTest(picture=picture):
+                result=render(template,player='media_player.example',
+                    artwork_base_url='http://ha.example:8123/',
+                    state_attr=lambda entity,key: picture,
+                    states=lambda entity: 'playing')
+                self.assertEqual(result.strip(),expected)
+        result=render(template,player='media_player.example',
+            artwork_base_url='http://ha.example:8123',
+            state_attr=lambda entity,key: '/album.jpg', states=lambda entity: 'unavailable')
+        self.assertEqual(result.strip(),'')
+
+    def test_existing_installations_keep_artwork_opt_in(self):
+        inputs=BP['blueprint']['input']
+        self.assertTrue(inputs['clear_artwork']['default'])
+        self.assertEqual(inputs['artwork_base_url']['default'],'')
+
 if __name__=='__main__': unittest.main()

@@ -1,5 +1,55 @@
 # Test record and release checks
 
+## Hub packaging preparation — 2026-10-03
+
+Version 3.3.1 adds author, panel and module dependency metadata and an empty
+optional fallback-icon default. Control and artwork logic is unchanged from
+3.3.0. The repository suite ran 31 tests: 30 passed and the hardware test was
+skipped in that run. The hardware test was then run separately on official
+TC002 beta 1.1.6 and passed all 106 actual Berry runtime assertions.
+
+Three original preview images were prepared with example data. The main
+preview uses the actual class renderer in a temporary, inert on-demand app;
+it sends no player commands. The production app and module sources and
+settings were compared before and after and were identical. This is not yet
+an end-to-end Hub dependency-install test: real module Hub IDs are assigned
+only when their flows are published.
+
+## Native URL artwork on official beta 1.1.6 — 2026-10-03
+
+Sonos Remote 3.3.0 was installed on the official OTA package
+`1.1.6-g237da747091b`; the device confirmed the update after its stability
+period. JPEG and PNG 256×256 quadrant sources were downloaded from HA and
+resized to the entire 16×16 area, with all four corners verified. A 640×640
+album JPEG also rendered all sixteen rows. The production HA blueprint then
+published a real Sonos proxy URL and the clock drew its 640×640 original
+album cover as 16×16 without an external converter. Empty artwork restored
+the fallback. Playback source and volume were restored after a silent test.
+
+The actual Berry class passed 106 runtime checks, including HTTP/HTTPS URLs,
+malformed/oversized URLs, existing GIF/RGB handling, artists, ten playlist
+slots and controls. Ten URL resolution/invalid-input fixtures passed in the
+actual HA template engine. No new physical button acceptance was performed.
+Device scripts, configurations, icons and carousel order were checked against
+private backups; only the intended app sources changed. The separate TC001
+and unrelated HA automations/scripts were preserved. The temporary converter
+was archived and removed only after native artwork passed on real hardware.
+
+These results use the official firmware's image decoder. They do not certify
+the historical C++ proposal under `native-artwork/`.
+
+## GIF artwork on official beta 1.1.5 — 2026-10-02
+
+Version 3.2.3 draws a provider's static 16×16 GIF data URI with native `icon()`.
+A four-quadrant probe matched all 256 framebuffer pixels. A real album cover
+also matched every pixel after GIF decoding. Empty and malformed GIF payloads
+fell back to the icon without Berry errors; legacy RGB rendering still passed.
+The actual Berry regression harness passed 96 checks, including existing control
+and playlist behavior. No new physical control test was performed for this
+artwork-only update. Protected scripts/configuration/rotation stayed unchanged.
+The GIF converter is a temporary optional HA-side provider; these checks do not
+establish full-size JPEG support or firmware-native image resizing.
+
 ## Native artwork source candidate — 2026-10-02
 
 The separate [native candidate](../native-artwork/README.md) has 13 native

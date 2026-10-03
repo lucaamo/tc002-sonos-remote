@@ -179,6 +179,26 @@ __CLASS__
   check(commands[-1]["media_content_id"]=="spotify:playlist:EXAMPLE", "playlist ID preserved")
   app.load_cover("not JSON")
   check(size(app.cover)==0, "malformed cover does not crash")
+  app.load_cover(json.dump({"width":16,"height":16,"image":"data:image/gif;base64,R0lG"}))
+  check(app.cover_image=="data:image/gif;base64,R0lG" && size(app.cover)==0, "GIF URI accepted for native decoding")
+  app.load_cover("")
+  check(app.cover_image==nil, "missing artwork clears native image")
+  app.load_cover(json.dump({"width":16,"height":16,"image":"data:image/jpeg;base64,R0lG"}))
+  check(app.cover_image==nil, "JPEG URI rejected until full-size support verified")
+  app.load_cover(json.dump({"width":8,"height":8,"image":"data:image/gif;base64,R0lG"}))
+  check(app.cover_image==nil, "wrong artwork dimensions rejected")
+  app.load_cover(json.dump({"width":16,"height":16,"image":"http://ha.example:8123/api/media_player_proxy/media_player.example?token=sample"}))
+  check(app.cover_image!=nil && size(app.cover)==0, "HTTP proxy URL accepted for native 16x16 artwork")
+  app.load_cover(json.dump({"width":16,"height":16,"image":"https://images.example/album.jpg"}))
+  check(app.cover_image=="https://images.example/album.jpg", "HTTPS artwork accepted")
+  for bad_url : ["http://", "ftp://images.example/a.jpg", "file:///etc/passwd", "https://images.example/a b.jpg", "http://images.example/a\n.jpg", "http://images.example/a\t.jpg", "http://images.example/a\r.jpg"]
+    app.load_cover(json.dump({"width":16,"height":16,"image":bad_url}))
+    check(app.cover_image==nil, "invalid URL rejected")
+  end
+  var oversized_url = "http://images.example/"
+  for n : 0 .. 2048 oversized_url += "x" end
+  app.load_cover(json.dump({"width":16,"height":16,"image":oversized_url}))
+  check(app.cover_image==nil, "oversized artwork URL rejected")
   var pixels = []
   for i : 0 .. 255 pixels.push(0x123456) end
   app.load_cover(json.dump({"width":16,"height":16,"pixels":pixels}))

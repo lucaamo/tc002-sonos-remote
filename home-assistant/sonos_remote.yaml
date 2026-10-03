@@ -4,8 +4,9 @@ blueprint:
     Commands and retained metadata for the Sonos Remote Berry app. Requires
     Home Assistant MQTT and Sonos integrations; no TC002 AWTRIX Bridge add-on.
     Use one automation and one unique topic root per remote. Configure the same
-    entity and root in Berry. Artwork conversion is optional and not provided
-    by this blueprint. Commands must be published with retain=false.
+    entity and root in Berry. On TC002 beta 1.1.6 or later, album artwork can be
+    fetched and resized by the clock using a URL, without a converter.
+    Commands must be published with retain=false.
   domain: automation
   author: Luca + Codex
   source_url: https://github.com/lucaamo/tc002-sonos-remote/blob/main/home-assistant/sonos_remote.yaml
@@ -26,13 +27,25 @@ blueprint:
       selector:
         text:
     clear_artwork:
-      name: Use built-in icon instead of external artwork
+      name: Use fallback icon instead of album artwork
       description: >-
-        Leave enabled for a standalone installation. Disable only when a
-        separate publisher supplies 16x16 RGB artwork on root/state/cover.
+        Disable to show album artwork. Set the Home Assistant URL below for
+        native URL artwork on TC002 beta 1.1.6 or later. With that URL empty,
+        existing external GIF/RGB artwork publishers remain compatible.
       default: true
       selector:
         boolean:
+    artwork_base_url:
+      name: Home Assistant URL for native album artwork
+      description: >-
+        Local HTTP(S) address reachable from the clock, for example
+        http://homeassistant.local:8123. Resolves relative entity_picture URLs.
+        Disable the fallback-only option above to enable native artwork.
+        Leave empty when using an external publisher. Requires Sonos Remote
+        3.3.0 and TC002 beta 1.1.6 or later. Self-signed HTTPS is unsupported.
+      default: ''
+      selector:
+        text:
 
 mode: queued
 max: 30
@@ -58,6 +71,7 @@ variables:
   player: !input player
   topic_root: !input mqtt_root
   clear_artwork: !input clear_artwork
+  artwork_base_url: !input artwork_base_url
 actions:
   - variables:
       cmd: >-
@@ -159,12 +173,30 @@ actions:
             topic: '{{ topic_root }}/state/{{ repeat.item[0] }}'
             payload: '{{ repeat.item[1] }}'
             retain: true
-  - if:
-      - condition: template
-        value_template: '{{ clear_artwork }}'
-    then:
-      - action: mqtt.publish
-        data:
-          topic: '{{ topic_root }}/state/cover'
-          payload: ''
-          retain: true
+  - choose:
+      - conditions: '{{ clear_artwork }}'
+        sequence:
+          - action: mqtt.publish
+            data:
+              topic: '{{ topic_root }}/state/cover'
+              payload: ''
+              retain: true
+      - conditions: '{{ artwork_base_url | trim != "" }}'
+        sequence:
+          - variables:
+              cover_url: >-
+                {% set picture = state_attr(player, 'entity_picture') or '' %}
+                {% set base = artwork_base_url | trim | replace('\n', '') | replace('\r', '') %}
+                {% set valid_base = base.startswith(('http://', 'https://')) and ' ' not in base %}
+                {% set url = picture if picture.startswith(('http://', 'https://'))
+                   else base.rstrip('/') + picture if valid_base and picture.startswith('/') and not picture.startswith('//')
+                   else '' %}
+                {{ url if 0 < url | length <= 2048 and ' ' not in url and '\n' not in url
+                   and '\r' not in url and '\t' not in url
+                   and states(player) not in ['unknown', 'unavailable'] else '' }}
+          - action: mqtt.publish
+            data:
+              topic: '{{ topic_root }}/state/cover'
+              payload: >-
+                {{ {'width':16, 'height':16, 'image':cover_url} | to_json if cover_url else '' }}
+              retain: true

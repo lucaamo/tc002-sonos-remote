@@ -1,5 +1,9 @@
 # @module sonos_artist_names
 # @name Sonos Artist Names
+# @author lucaamo
+# @display 52x16
+# License: PolyForm Noncommercial 1.0.0; https://github.com/lucaamo/tc002-sonos-remote/blob/main/LICENSE.md
+# Required Notice: Copyright © Stephan Mühl (Blueforcer) https://github.com/Blueforcer/awtrix-ng
 # @desc Optional global artist aliases, independent of playlists. Full names scroll by default.
 # @version 2.0.0
 # @config rules text "Global artist rules" default="" maxlen=16384 help="Optional, for every playlist and source. Full name|Short name; separate with ;. Empty keeps full names. Use * for continuous full-name scrolling."
